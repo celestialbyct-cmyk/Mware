@@ -8,17 +8,75 @@
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-Осталось watermark и themes и все это элементы худа
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+
+-- Для экзекьюторов: прячем GUI в gethui()/CoreGui, иначе PlayerGui
+local function getGuiParent()
+	local ok, parent = pcall(function()
+		if typeof(gethui) == "function" then return gethui() end
+		return game:GetService("CoreGui")
+	end)
+	if ok and parent then return parent end
+	return playerGui
+end
+local guiParent = getGuiParent()
+
+-- при повторном запуске убираем старые копии
+for _, n in ipairs({ "ClickGui", "KeybindsHud", "HotkeysHud", "TargetHud", "WatermarkHud", "NotifyHud", "EspHud" }) do
+	local old = guiParent:FindFirstChild(n)
+	if old then old:Destroy() end
+end
+
+-- ---------- Тема (градиенты) ----------
+local themes = {
+	{ Color3.fromRGB(235, 35, 60), Color3.fromRGB(255, 120, 140) },   -- красный
+	{ Color3.fromRGB(0, 185, 255), Color3.fromRGB(60, 120, 255) },    -- голубой
+	{ Color3.fromRGB(170, 30, 255), Color3.fromRGB(255, 90, 225) },   -- фиолетовый
+	{ Color3.fromRGB(0, 85, 215), Color3.fromRGB(70, 170, 255) },     -- синий
+	{ Color3.fromRGB(185, 185, 255), Color3.fromRGB(245, 245, 255) }, -- лавандовый
+	{ Color3.fromRGB(60, 255, 215), Color3.fromRGB(140, 255, 255) },  -- бирюзовый
+	{ Color3.fromRGB(255, 255, 255), Color3.fromRGB(180, 180, 195) }, -- белый
+	{ Color3.fromRGB(115, 135, 255), Color3.fromRGB(190, 200, 255) }, -- перивинкл
+}
+local currentTheme = nil   -- nil = стандартные цвета
+local accentObjs = {}      -- {объект, свойство}, красятся в цвет темы
+local function addAccent(inst, prop)
+	table.insert(accentObjs, { inst, prop })
+end
+local function themeSeq(th)
+	return ColorSequence.new({
+		ColorSequenceKeypoint.new(0, th[1]),
+		ColorSequenceKeypoint.new(0.5, th[2]),
+		ColorSequenceKeypoint.new(1, th[1]),
+	})
+end
+
+-- ---------- Настройки модулей (кроме Interface) ----------
+local settingDefs = {
+	["ESP"] = {
+		{ key = "Esp2D", label = "2D", type = "toggle", default = true },
+		{ key = "Esp3D", label = "3D", type = "toggle" },
+		{ key = "EspRounded", label = "Ровные углы", type = "toggle" }, -- только для 2D
+		{ key = "EspCorner", label = "Corner", type = "toggle" },
+		{ key = "EspHealth", label = "ESP Health", type = "toggle", default = true },
+		{ key = "EspSkeleton", label = "ESP Skeleton", type = "toggle" },
+		{ key = "EspName", label = "ESP Name", type = "toggle", default = true },
+	},
+	["Third Person"] = {
+		{ key = "Distance", label = "Distance", type = "slider", min = 1, max = 10, step = 0.5, default = 5 },
+	},
+}
 local TOGGLE_KEY = Enum.KeyCode.RightControl
 
 local categories = {
 	{ "Combat", { "Anti Bot", "Auto Armor", "Auto Explosion", "Auto Swap", "Auto Totem", "Crystal Spammer", "CrystalAura", "KillAura", "No Friend Damage", "Trigger Bot", "Velocity" } },
 	{ "Movement", { "Air Stuck", "Dog Fly", "Elytra Motion", "ElytraBooster", "ElytraFlight", "Gui Move", "No Jump Delay", "No Slow", "No Web", "Speed", "Sprint" } },
-	{ "Render", { "Client Sounds", "Fire Fly", "Full Bright", "Interface", "Kill Effect", "Predictions", "Removals", "Soul ESP", "Swing Animations", "Tags", "Target ESP", "Third Person", "Tracers", "Trails" } },
+	{ "Render", { "Client Sounds", "Fire Fly", "Full Bright", "Interface", "Kill Effect", "Predictions", "Removals", "Soul ESP", "Swing Animations", "Tags", "Target ESP", "Tracers", "Trails" } },
 	{ "Player", { "Auto Eat", "Auto Leave", "Auto Tool", "Auto Tpaccept", "Click Pearl", "Death Coords", "Elytra Helper", "Fast Exp", "Free Camera", "No Push", "Tape Mouse", "Teleport Back" } },
 	{ "Misc", { "Crystal Optimizer", "Discord RPC", "Fake Player", "Lony Helper", "RP Spoofer", "Streamer Mode", "UseTracker" } },
+	{ "Visual", { "ESP", "China Hat", "Third Person" } },
 }
 
 local FONT = Enum.Font.GothamMedium
@@ -43,7 +101,7 @@ hudGui.ResetOnSpawn = false
 hudGui.IgnoreGuiInset = true
 hudGui.DisplayOrder = 90
 hudGui.Enabled = false
-hudGui.Parent = playerGui
+hudGui.Parent = guiParent
 
 local hud = Instance.new("Frame")
 hud.Position = UDim2.fromOffset(20, 260)
@@ -112,7 +170,7 @@ hud2Gui.ResetOnSpawn = false
 hud2Gui.IgnoreGuiInset = true
 hud2Gui.DisplayOrder = 90
 hud2Gui.Enabled = false
-hud2Gui.Parent = playerGui
+hud2Gui.Parent = guiParent
 
 local hud2 = Instance.new("Frame")
 hud2.Position = UDim2.fromOffset(200, 260)
@@ -215,7 +273,7 @@ thGui.Name = "TargetHud"
 thGui.ResetOnSpawn = false
 thGui.IgnoreGuiInset = true
 thGui.DisplayOrder = 91
-thGui.Parent = playerGui
+thGui.Parent = guiParent
 
 local th = nil          -- текущая карточка
 local thStyle = nil
@@ -416,11 +474,337 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
+-- ---------- Watermark ----------
+local WM_RED = Color3.fromRGB(225, 45, 60)
+local WM_TITLE = "Development"
+
+local wmGui = Instance.new("ScreenGui")
+wmGui.Name = "WatermarkHud"
+wmGui.ResetOnSpawn = false
+wmGui.IgnoreGuiInset = true
+wmGui.DisplayOrder = 89
+wmGui.Enabled = false
+wmGui.Parent = guiParent
+
+local function wmBox(parent, x, y, w, h, round)
+	local f = Instance.new("Frame")
+	f.Position = UDim2.fromOffset(x, y)
+	f.Size = UDim2.fromOffset(w, h)
+	f.BackgroundColor3 = WM_RED
+	addAccent(f, "BackgroundColor3")
+	f.BorderSizePixel = 0
+	f.Parent = parent
+	if round then Instance.new("UICorner", f).CornerRadius = UDim.new(1, 0) end
+	return f
+end
+
+-- линия между двумя точками (рисуем иконки из повёрнутых рамок, без эмодзи/символов)
+local function wmLine(p, x1, y1, x2, y2, thick)
+	local dx, dy = x2 - x1, y2 - y1
+	local len = math.sqrt(dx * dx + dy * dy)
+	local f = Instance.new("Frame")
+	f.AnchorPoint = Vector2.new(0.5, 0.5)
+	f.Position = UDim2.fromOffset((x1 + x2) / 2, (y1 + y2) / 2)
+	f.Size = UDim2.fromOffset(len + (thick or 2) * 0.5, thick or 2)
+	f.Rotation = math.deg(math.atan2(dy, dx))
+	f.BackgroundColor3 = WM_RED
+	addAccent(f, "BackgroundColor3")
+	f.BorderSizePixel = 0
+	f.Parent = p
+	Instance.new("UICorner", f).CornerRadius = UDim.new(1, 0)
+	return f
+end
+
+-- контур (кольцо / скруглённый прямоугольник)
+local function wmRing(p, x, y, w, h, radius, thick)
+	local f = Instance.new("Frame")
+	f.Position = UDim2.fromOffset(x, y)
+	f.Size = UDim2.fromOffset(w, h)
+	f.BackgroundTransparency = 1
+	f.BorderSizePixel = 0
+	f.Parent = p
+	Instance.new("UICorner", f).CornerRadius = radius
+	local st = Instance.new("UIStroke", f)
+	st.Color = WM_RED
+	addAccent(st, "Color")
+	st.Thickness = thick or 1.5
+	return f
+end
+
+local function wmBars(p, heights, step, w)
+	for i, h in ipairs(heights) do
+		local b = wmBox(p, (i - 1) * step + 1, 15 - h, w, h, false)
+		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 1)
+	end
+end
+
+local wmIcons = {
+	-- логотип: кольцо с точкой и «хвостиком»
+	logo = function(p)
+		wmRing(p, 1, 1, 14, 14, UDim.new(1, 0), 2)
+		wmBox(p, 5, 5, 6, 6, true)
+		wmLine(p, 11, 11, 15, 15, 2)
+	end,
+	-- ник: контурный человечек
+	user = function(p)
+		wmRing(p, 5, 0, 6, 6, UDim.new(1, 0), 1.5)
+		wmRing(p, 2, 8, 12, 8, UDim.new(0, 4), 1.5)
+	end,
+	-- fps: график со стрелкой вверх
+	fps = function(p)
+		wmLine(p, 1, 12, 5, 7, 2)
+		wmLine(p, 5, 7, 9, 10, 2)
+		wmLine(p, 9, 10, 14, 3, 2)
+		wmLine(p, 14, 3, 10, 3, 2)
+		wmLine(p, 14, 3, 14, 7, 2)
+	end,
+	-- пинг: полоски сигнала
+	ping = function(p) wmBars(p, { 4, 7, 10, 14 }, 4, 2) end,
+	-- время: кольцо и стрелки
+	clock = function(p)
+		wmRing(p, 1, 1, 14, 14, UDim.new(1, 0), 1.5)
+		wmLine(p, 8, 8, 8, 4, 1.5)
+		wmLine(p, 8, 8, 11, 9, 1.5)
+	end,
+	-- скорость: двойная стрелка »
+	speed = function(p)
+		wmLine(p, 2, 3, 7, 8, 2)
+		wmLine(p, 7, 8, 2, 13, 2)
+		wmLine(p, 8, 3, 13, 8, 2)
+		wmLine(p, 13, 8, 8, 13, 2)
+	end,
+}
+
+local function wmRow(y)
+	local row = Instance.new("Frame")
+	row.Position = UDim2.fromOffset(10, y)
+	row.Size = UDim2.fromOffset(0, 34)
+	row.AutomaticSize = Enum.AutomaticSize.X
+	row.BackgroundColor3 = Color3.fromRGB(12, 10, 14)
+	row.BackgroundTransparency = 0.15
+	row.Parent = wmGui
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+	local st = Instance.new("UIStroke", row)
+	st.Color = WM_RED
+	addAccent(st, "Color")
+	st.Transparency = 0.65
+	local pad = Instance.new("UIPadding", row)
+	pad.PaddingLeft = UDim.new(0, 12)
+	pad.PaddingRight = UDim.new(0, 12)
+	local l = Instance.new("UIListLayout", row)
+	l.FillDirection = Enum.FillDirection.Horizontal
+	l.VerticalAlignment = Enum.VerticalAlignment.Center
+	l.Padding = UDim.new(0, 18)
+	l.SortOrder = Enum.SortOrder.LayoutOrder
+	return row
+end
+
+local function wmItem(row, order, iconFn, text, color)
+	local item = Instance.new("Frame")
+	item.LayoutOrder = order
+	item.Size = UDim2.new(0, 0, 1, 0)
+	item.AutomaticSize = Enum.AutomaticSize.X
+	item.BackgroundTransparency = 1
+	item.Parent = row
+	local l = Instance.new("UIListLayout", item)
+	l.FillDirection = Enum.FillDirection.Horizontal
+	l.VerticalAlignment = Enum.VerticalAlignment.Center
+	l.Padding = UDim.new(0, 6)
+	l.SortOrder = Enum.SortOrder.LayoutOrder
+
+	local ic = Instance.new("Frame")
+	ic.LayoutOrder = 1
+	ic.Size = UDim2.fromOffset(16, 16)
+	ic.BackgroundTransparency = 1
+	ic.Parent = item
+	iconFn(ic)
+
+	local t = Instance.new("TextLabel")
+	t.LayoutOrder = 2
+	t.Size = UDim2.new(0, 0, 1, 0)
+	t.AutomaticSize = Enum.AutomaticSize.X
+	t.BackgroundTransparency = 1
+	t.Font = Enum.Font.GothamMedium
+	t.TextSize = 14
+	t.TextColor3 = color or Color3.new(1, 1, 1)
+	t.Text = text or ""
+	t.Parent = item
+	return t
+end
+
+local wmRow1 = wmRow(10)
+wmItem(wmRow1, 1, wmIcons.logo, WM_TITLE, Color3.fromRGB(225, 60, 70))     -- 1 логотип/название
+local wmNick = wmItem(wmRow1, 2, wmIcons.user, player.Name)                 -- 2 ник
+local wmFpsLabel = wmItem(wmRow1, 3, wmIcons.fps, "0 Fps")                  -- 3 FPS
+local wmTime = wmItem(wmRow1, 4, wmIcons.clock, "00:00:00")                 -- 4 время МСК
+
+local wmRow2 = wmRow(50)
+local wmPing = wmItem(wmRow2, 1, wmIcons.ping, "0 Ping")                    -- 6 пинг
+local wmSpeed = wmItem(wmRow2, 2, wmIcons.speed, "0,0 Studs/s")             -- 8 скорость
+
+local wmStats = game:GetService("Stats")
+local wmFps, wmAcc = 60, 0
+
+RunService.Heartbeat:Connect(function(dt)
+	if dt > 0 then wmFps = wmFps * 0.9 + (1 / dt) * 0.1 end
+	if not wmGui.Enabled then return end
+	wmAcc += dt
+	if wmAcc < 0.2 then return end
+	wmAcc = 0
+
+	wmNick.Text = player.Name
+	wmFpsLabel.Text = string.format("%d Fps", math.floor(wmFps + 0.5))
+	wmTime.Text = os.date("!%H:%M:%S", os.time() + 3 * 3600) -- МСК = UTC+3
+
+	local ok, ping = pcall(function()
+		return wmStats.Network.ServerStatsItem["Data Ping"]:GetValue()
+	end)
+	wmPing.Text = string.format("%d Ping", ok and math.floor(ping + 0.5) or 0)
+
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	local sp = 0
+	if root then
+		local v = root.AssemblyLinearVelocity
+		sp = Vector3.new(v.X, 0, v.Z).Magnitude
+	end
+	wmSpeed.Text = (string.format("%.1f", sp):gsub("%.", ",")) .. " Studs/s"
+end)
+
+-- ---------- Notify (уведомления вкл/выкл модуля) ----------
+local NF_GREEN = Color3.fromRGB(60, 205, 85)
+local NF_RED = Color3.fromRGB(225, 55, 65)
+local NF_H, NF_GAP, NF_LIFE, NF_MAX = 38, 6, 2.5, 6
+
+local nfGui = Instance.new("ScreenGui")
+nfGui.Name = "NotifyHud"
+nfGui.ResetOnSpawn = false
+nfGui.IgnoreGuiInset = true
+nfGui.DisplayOrder = 95
+nfGui.Parent = guiParent
+
+local nfList = {} -- новые сверху, старые уходят вниз
+
+local function nfLayout()
+	for i, n in ipairs(nfList) do
+		local y = (i - 1) * (NF_H + NF_GAP)
+		TweenService:Create(n.frame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Position = UDim2.new(1, -20, 0.6, y),
+		}):Play()
+	end
+end
+
+local function nfPaint(n, on)
+	n.label.Text = "Модуль " .. n.module.name .. (on and " включен!" or " выключен!")
+	TweenService:Create(n.track, TweenInfo.new(0.15), { BackgroundColor3 = on and NF_GREEN or NF_RED }):Play()
+	TweenService:Create(n.knob, TweenInfo.new(0.15), { Position = UDim2.fromOffset(on and 19 or 3, 3) }):Play()
+end
+
+local function nfBuild(m)
+	local f = Instance.new("Frame")
+	f.AnchorPoint = Vector2.new(1, 0)
+	f.Position = UDim2.new(1, 300, 0.6, 0)
+	f.Size = UDim2.fromOffset(0, NF_H)
+	f.AutomaticSize = Enum.AutomaticSize.X
+	f.BackgroundColor3 = Color3.fromRGB(16, 16, 20)
+	f.BackgroundTransparency = 0.08
+	f.Parent = nfGui
+	Instance.new("UICorner", f).CornerRadius = UDim.new(0, 8)
+	local st = Instance.new("UIStroke", f)
+	st.Color = Color3.fromRGB(80, 80, 90)
+	st.Transparency = 0.5
+	local pad = Instance.new("UIPadding", f)
+	pad.PaddingLeft = UDim.new(0, 8)
+	pad.PaddingRight = UDim.new(0, 14)
+	local l = Instance.new("UIListLayout", f)
+	l.FillDirection = Enum.FillDirection.Horizontal
+	l.VerticalAlignment = Enum.VerticalAlignment.Center
+	l.Padding = UDim.new(0, 10)
+	l.SortOrder = Enum.SortOrder.LayoutOrder
+
+	local track = Instance.new("Frame")
+	track.LayoutOrder = 1
+	track.Size = UDim2.fromOffset(34, 18)
+	track.BackgroundColor3 = NF_RED
+	track.BorderSizePixel = 0
+	track.Parent = f
+	Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+	local knob = Instance.new("Frame")
+	knob.Position = UDim2.fromOffset(3, 3)
+	knob.Size = UDim2.fromOffset(12, 12)
+	knob.BackgroundColor3 = Color3.new(1, 1, 1)
+	knob.BorderSizePixel = 0
+	knob.Parent = track
+	Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+	local div = Instance.new("Frame")
+	div.LayoutOrder = 2
+	div.Size = UDim2.fromOffset(1, 22)
+	div.BackgroundColor3 = Color3.fromRGB(90, 90, 98)
+	div.BorderSizePixel = 0
+	div.Parent = f
+
+	local label = Instance.new("TextLabel")
+	label.LayoutOrder = 3
+	label.Size = UDim2.new(0, 0, 1, 0)
+	label.AutomaticSize = Enum.AutomaticSize.X
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.SourceSansSemibold
+	label.TextSize = 19
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.Text = ""
+	label.Parent = f
+
+	return { module = m, frame = f, track = track, knob = knob, label = label, token = 0 }
+end
+
+local function nfRemove(n)
+	local i = table.find(nfList, n)
+	if i then table.remove(nfList, i) end
+	TweenService:Create(n.frame, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+		Position = n.frame.Position + UDim2.fromOffset(320, 0),
+	}):Play()
+	task.delay(0.3, function() n.frame:Destroy() end)
+	nfLayout()
+end
+
+local function notifyModule(m, on)
+	local iface = byName["Interface"]
+	if not (iface and iface.settings.Notify and (iface.on or m == iface)) then return end
+
+	-- быстро включил/выключил тот же модуль: обновляем ту же плашку
+	local n
+	for _, x in ipairs(nfList) do
+		if x.module == m then n = x break end
+	end
+	if n then
+		table.remove(nfList, table.find(nfList, n))
+		table.insert(nfList, 1, n)
+	else
+		n = nfBuild(m)
+		table.insert(nfList, 1, n)
+	end
+	nfPaint(n, on)
+
+	-- не помещается: самая старая уходит
+	while #nfList > NF_MAX do
+		nfRemove(nfList[#nfList])
+	end
+
+	n.token += 1
+	local t = n.token
+	task.delay(NF_LIFE, function()
+		if n.token == t and table.find(nfList, n) then nfRemove(n) end
+	end)
+	nfLayout()
+end
+
 refreshHud = function()
 	local iface = byName["Interface"]
 	local ifaceOn = iface ~= nil and iface.on
 	hudGui.Enabled = ifaceOn and iface.settings.Keybinds == true
 	hud2Gui.Enabled = ifaceOn and iface.settings.Keybinds2 == true
+	wmGui.Enabled = ifaceOn and iface.settings.Watermark == true
 
 	for _, c in ipairs(hud:GetChildren()) do
 		if c.Name == "Row" then c:Destroy() end
@@ -441,7 +825,7 @@ refreshHud = function()
 		hudRow(1, "No active binds", nil, true)
 		-- у стиля 2 без биндов остаётся только шапка
 	end
-	hudGrad.Color = PURPLE
+	hudGrad.Color = currentTheme and themeSeq(currentTheme) or PURPLE
 end
 
 -- ===================== Главное меню =====================
@@ -451,22 +835,434 @@ gui.ResetOnSpawn = false
 gui.IgnoreGuiInset = true
 gui.DisplayOrder = 100
 gui.Enabled = false
-gui.Parent = playerGui
+gui.Parent = guiParent
 
 local root = Instance.new("Frame")
 root.AnchorPoint = Vector2.new(0.5, 0.5)
 root.Position = UDim2.fromScale(0.5, 0.5)
-root.Size = UDim2.fromOffset(1090, 520)
+root.Size = UDim2.fromOffset(1310, 520)
 root.BackgroundTransparency = 1
 root.Parent = gui
 
 local scale = Instance.new("UIScale", root)
 local function updateScale()
 	local vp = workspace.CurrentCamera.ViewportSize
-	scale.Scale = math.clamp(math.min(vp.X / 1150, vp.Y / 600), 0.5, 1.5)
+	scale.Scale = math.clamp(math.min(vp.X / 1370, vp.Y / 600), 0.5, 1.5)
 end
 updateScale()
 workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
+
+-- ===================== Панель градиентов =====================
+local gradPanel = Instance.new("Frame")
+gradPanel.Name = "Gradients"
+gradPanel.Visible = false
+gradPanel.AnchorPoint = Vector2.new(0.5, 1)
+gradPanel.Position = UDim2.new(0.5, 0, 1, -24)
+gradPanel.Size = UDim2.fromOffset(0, 46)
+gradPanel.AutomaticSize = Enum.AutomaticSize.X
+gradPanel.BackgroundColor3 = Color3.fromRGB(14, 14, 18)
+gradPanel.BackgroundTransparency = 0.05
+gradPanel.Parent = gui
+Instance.new("UICorner", gradPanel).CornerRadius = UDim.new(0, 12)
+local gpStroke = Instance.new("UIStroke", gradPanel)
+gpStroke.Color = Color3.fromRGB(70, 70, 78)
+gpStroke.Transparency = 0.4
+local gpPad = Instance.new("UIPadding", gradPanel)
+gpPad.PaddingLeft = UDim.new(0, 14)
+gpPad.PaddingRight = UDim.new(0, 14)
+local gpLayout = Instance.new("UIListLayout", gradPanel)
+gpLayout.FillDirection = Enum.FillDirection.Horizontal
+gpLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+gpLayout.Padding = UDim.new(0, 12)
+gpLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+local swatches = {}
+
+local function applyTheme()
+	hudGrad.Color = currentTheme and themeSeq(currentTheme) or PURPLE
+	if not currentTheme then
+		for _, a in ipairs(accentObjs) do a[1][a[2]] = WM_RED end
+	end
+	for i, sw in ipairs(swatches) do
+		sw.dot.Visible = (currentTheme == themes[i]) -- чёрная точка у выбранного
+	end
+end
+
+for i, th in ipairs(themes) do
+	local b = Instance.new("TextButton")
+	b.LayoutOrder = i
+	b.Size = UDim2.fromOffset(28, 28)
+	b.BackgroundColor3 = Color3.new(1, 1, 1)
+	b.AutoButtonColor = false
+	b.Text = ""
+	b.Parent = gradPanel
+	Instance.new("UICorner", b).CornerRadius = UDim.new(1, 0)
+
+	local g = Instance.new("UIGradient", b)
+	g.Color = themeSeq(th)
+	g.Rotation = 45
+
+	local dot = Instance.new("Frame")
+	dot.AnchorPoint = Vector2.new(0.5, 0.5)
+	dot.Position = UDim2.fromScale(0.5, 0.5)
+	dot.Size = UDim2.fromOffset(9, 9)
+	dot.BackgroundColor3 = Color3.new(0, 0, 0)
+	dot.BorderSizePixel = 0
+	dot.Visible = false
+	dot.Parent = b
+	Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+	b.MouseButton1Click:Connect(function()
+		currentTheme = (currentTheme == th) and nil or th
+		applyTheme()
+	end)
+
+	swatches[i] = { grad = g, dot = dot }
+end
+
+-- переливание
+RunService.Heartbeat:Connect(function()
+	local t = os.clock()
+	local sweep = Vector2.new(math.sin(t * 1.6) * 0.5, 0)
+	if gradPanel.Visible then
+		for _, sw in ipairs(swatches) do sw.grad.Offset = sweep end
+	end
+	if hudGui.Enabled then hudGrad.Offset = sweep end
+	if currentTheme then
+		local c = currentTheme[1]:Lerp(currentTheme[2], (math.sin(t * 1.6) + 1) / 2)
+		for _, o in ipairs(accentObjs) do o[1][o[2]] = c end
+	end
+end)
+
+-- ===================== ESP / China Hat / Third Person =====================
+local function accentColor()
+	if currentTheme then
+		return currentTheme[1]:Lerp(currentTheme[2], (math.sin(os.clock() * 1.6) + 1) / 2)
+	end
+	return WM_RED
+end
+
+-- ---------- ESP ----------
+local espGui = Instance.new("ScreenGui")
+espGui.Name = "EspHud"
+espGui.ResetOnSpawn = false
+espGui.IgnoreGuiInset = true
+espGui.DisplayOrder = 80
+espGui.Parent = guiParent
+
+local SIGNS = {
+	{ -1, -1, -1 }, { 1, -1, -1 }, { 1, -1, 1 }, { -1, -1, 1 },
+	{ -1, 1, -1 }, { 1, 1, -1 }, { 1, 1, 1 }, { -1, 1, 1 },
+}
+local EDGES = {
+	{ 1, 2 }, { 2, 3 }, { 3, 4 }, { 4, 1 },
+	{ 5, 6 }, { 6, 7 }, { 7, 8 }, { 8, 5 },
+	{ 1, 5 }, { 2, 6 }, { 3, 7 }, { 4, 8 },
+}
+local R15_BONES = {
+	{ "Head", "UpperTorso" }, { "UpperTorso", "LowerTorso" },
+	{ "UpperTorso", "LeftUpperArm" }, { "LeftUpperArm", "LeftLowerArm" }, { "LeftLowerArm", "LeftHand" },
+	{ "UpperTorso", "RightUpperArm" }, { "RightUpperArm", "RightLowerArm" }, { "RightLowerArm", "RightHand" },
+	{ "LowerTorso", "LeftUpperLeg" }, { "LeftUpperLeg", "LeftLowerLeg" }, { "LeftLowerLeg", "LeftFoot" },
+	{ "LowerTorso", "RightUpperLeg" }, { "RightUpperLeg", "RightLowerLeg" }, { "RightLowerLeg", "RightFoot" },
+}
+local R6_BONES = {
+	{ "Head", "Torso" }, { "Torso", "Left Arm" }, { "Torso", "Right Arm" },
+	{ "Torso", "Left Leg" }, { "Torso", "Right Leg" },
+}
+
+local espObjs = {}
+local espWasOn = false
+
+local function newLine()
+	local f = Instance.new("Frame")
+	f.AnchorPoint = Vector2.new(0.5, 0.5)
+	f.BorderSizePixel = 0
+	f.BackgroundColor3 = WM_RED
+	f.Visible = false
+	f.Parent = espGui
+	return f
+end
+
+local function placeLine(f, x1, y1, x2, y2, thick, color)
+	local dx, dy = x2 - x1, y2 - y1
+	f.Position = UDim2.fromOffset((x1 + x2) / 2, (y1 + y2) / 2)
+	f.Size = UDim2.fromOffset(math.sqrt(dx * dx + dy * dy) + thick * 0.5, thick)
+	f.Rotation = math.deg(math.atan2(dy, dx))
+	f.BackgroundColor3 = color
+	f.Visible = true
+end
+
+local function hideList(list)
+	for _, l in ipairs(list) do l.Visible = false end
+end
+
+local function createEsp()
+	local o = { all = {} }
+	local function reg(i)
+		table.insert(o.all, i)
+		return i
+	end
+
+	o.box = reg(Instance.new("Frame"))
+	o.box.BackgroundTransparency = 1
+	o.box.BorderSizePixel = 0
+	o.box.Visible = false
+	o.box.Parent = espGui
+	o.stroke = Instance.new("UIStroke", o.box)
+	o.stroke.Thickness = 1.5
+	o.round = Instance.new("UICorner", o.box)
+	o.round.CornerRadius = UDim.new(0, 0)
+
+	o.corners, o.edges, o.skel = {}, {}, {}
+	for i = 1, 8 do o.corners[i] = reg(newLine()) end
+	for i = 1, 12 do o.edges[i] = reg(newLine()) end
+	for i = 1, 14 do o.skel[i] = reg(newLine()) end
+
+	o.hpBack = reg(Instance.new("Frame"))
+	o.hpBack.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+	o.hpBack.BackgroundTransparency = 0.3
+	o.hpBack.BorderSizePixel = 0
+	o.hpBack.ClipsDescendants = true
+	o.hpBack.Visible = false
+	o.hpBack.Parent = espGui
+	o.hpFill = Instance.new("Frame")
+	o.hpFill.AnchorPoint = Vector2.new(0, 1)
+	o.hpFill.Position = UDim2.fromScale(0, 1)
+	o.hpFill.BorderSizePixel = 0
+	o.hpFill.Parent = o.hpBack
+
+	o.name = reg(Instance.new("TextLabel"))
+	o.name.AnchorPoint = Vector2.new(0.5, 1)
+	o.name.Size = UDim2.fromOffset(0, 16)
+	o.name.AutomaticSize = Enum.AutomaticSize.X
+	o.name.BackgroundTransparency = 1
+	o.name.Font = Enum.Font.SourceSansSemibold
+	o.name.TextSize = 16
+	o.name.TextColor3 = Color3.new(1, 1, 1)
+	o.name.TextStrokeTransparency = 0.4
+	o.name.Visible = false
+	o.name.Parent = espGui
+	return o
+end
+
+local function hideEsp(o)
+	o.box.Visible = false
+	hideList(o.corners)
+	hideList(o.edges)
+	hideList(o.skel)
+	o.hpBack.Visible = false
+	o.name.Visible = false
+end
+
+local function drawEsp(pl, o, cam, st, color)
+	local char = pl.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not (hum and root and hum.Health > 0) then
+		hideEsp(o)
+		return
+	end
+
+	local cf, size = char:GetBoundingBox()
+	local top = cam:WorldToViewportPoint(cf.Position + Vector3.new(0, size.Y / 2, 0))
+	local bot = cam:WorldToViewportPoint(cf.Position - Vector3.new(0, size.Y / 2, 0))
+	if top.Z <= 0 or bot.Z <= 0 then
+		hideEsp(o)
+		return
+	end
+
+	local h = math.abs(bot.Y - top.Y)
+	local w = h * 0.55
+	local cx = (top.X + bot.X) / 2
+	local left = cx - w / 2
+	local topY = math.min(top.Y, bot.Y)
+	local right = left + w
+	local bottomY = topY + h
+
+	-- 2D бокс (ровные углы = скруглённый, только для 2D)
+	if st.Esp2D then
+		o.box.Position = UDim2.fromOffset(left, topY)
+		o.box.Size = UDim2.fromOffset(w, h)
+		o.stroke.Color = color
+		o.round.CornerRadius = UDim.new(0, st.EspRounded and 8 or 0)
+		o.box.Visible = true
+	else
+		o.box.Visible = false
+	end
+
+	-- Corner: только уголки
+	if st.EspCorner then
+		local L = math.clamp(math.min(w, h) * 0.28, 4, 18)
+		local c = o.corners
+		placeLine(c[1], left, topY, left + L, topY, 1.5, color)
+		placeLine(c[2], left, topY, left, topY + L, 1.5, color)
+		placeLine(c[3], right, topY, right - L, topY, 1.5, color)
+		placeLine(c[4], right, topY, right, topY + L, 1.5, color)
+		placeLine(c[5], left, bottomY, left + L, bottomY, 1.5, color)
+		placeLine(c[6], left, bottomY, left, bottomY - L, 1.5, color)
+		placeLine(c[7], right, bottomY, right - L, bottomY, 1.5, color)
+		placeLine(c[8], right, bottomY, right, bottomY - L, 1.5, color)
+	else
+		hideList(o.corners)
+	end
+
+	-- 3D бокс
+	if st.Esp3D then
+		local pts, ok = {}, true
+		for i, sg in ipairs(SIGNS) do
+			local v = cam:WorldToViewportPoint(cf * Vector3.new(sg[1] * size.X / 2, sg[2] * size.Y / 2, sg[3] * size.Z / 2))
+			if v.Z <= 0 then
+				ok = false
+				break
+			end
+			pts[i] = v
+		end
+		if ok then
+			for i, e in ipairs(EDGES) do
+				placeLine(o.edges[i], pts[e[1]].X, pts[e[1]].Y, pts[e[2]].X, pts[e[2]].Y, 1.5, color)
+			end
+		else
+			hideList(o.edges)
+		end
+	else
+		hideList(o.edges)
+	end
+
+	-- Health: полоска слева от бокса/углов
+	if st.EspHealth then
+		local ratio = math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1)
+		o.hpBack.Position = UDim2.fromOffset(left - 7, topY)
+		o.hpBack.Size = UDim2.fromOffset(3, h)
+		o.hpFill.Size = UDim2.new(1, 0, ratio, 0)
+		o.hpFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60):Lerp(Color3.fromRGB(60, 255, 90), ratio)
+		o.hpBack.Visible = true
+	else
+		o.hpBack.Visible = false
+	end
+
+	-- Skeleton
+	if st.EspSkeleton then
+		local bones = char:FindFirstChild("UpperTorso") and R15_BONES or R6_BONES
+		for i, line in ipairs(o.skel) do
+			local pair = bones[i]
+			local shown = false
+			if pair then
+				local a, b = char:FindFirstChild(pair[1]), char:FindFirstChild(pair[2])
+				if a and b and a:IsA("BasePart") and b:IsA("BasePart") then
+					local pa = cam:WorldToViewportPoint(a.Position)
+					local pb = cam:WorldToViewportPoint(b.Position)
+					if pa.Z > 0 and pb.Z > 0 then
+						placeLine(line, pa.X, pa.Y, pb.X, pb.Y, 1.5, color)
+						shown = true
+					end
+				end
+			end
+			if not shown then line.Visible = false end
+		end
+	else
+		hideList(o.skel)
+	end
+
+	-- Name: ник сверху
+	if st.EspName then
+		o.name.Text = pl.Name
+		o.name.Position = UDim2.fromOffset(cx, topY - 3)
+		o.name.Visible = true
+	else
+		o.name.Visible = false
+	end
+end
+
+Players.PlayerRemoving:Connect(function(pl)
+	local o = espObjs[pl]
+	if o then
+		for _, i in ipairs(o.all) do i:Destroy() end
+		espObjs[pl] = nil
+	end
+end)
+
+RunService.RenderStepped:Connect(function()
+	local esp = byName["ESP"]
+	if not (esp and esp.on) then
+		if espWasOn then
+			espWasOn = false
+			for _, o in pairs(espObjs) do hideEsp(o) end
+		end
+		return
+	end
+	espWasOn = true
+
+	local cam = workspace.CurrentCamera
+	local color = accentColor()
+	for _, pl in ipairs(Players:GetPlayers()) do
+		if pl ~= player then
+			local o = espObjs[pl]
+			if not o then
+				o = createEsp()
+				espObjs[pl] = o
+			end
+			drawEsp(pl, o, cam, esp.settings, color)
+		end
+	end
+end)
+
+-- ---------- China Hat (простая шляпа без рисунков, цвет темы) ----------
+local HAT_FLIP = false -- если конус смотрит вниз, поставь true
+local hat = nil
+
+RunService.RenderStepped:Connect(function()
+	local ch = byName["China Hat"]
+	local char = player.Character
+	local head = char and char:FindFirstChild("Head")
+	if ch and ch.on and head then
+		if not hat or not hat.Parent then
+			hat = Instance.new("ConeHandleAdornment")
+			hat.Radius = 1.7
+			hat.Height = 0.9
+			hat.CFrame = CFrame.new(0, 0.5, 0) * CFrame.Angles(HAT_FLIP and math.pi / 2 or -math.pi / 2, 0, 0)
+			hat.Transparency = 0.1
+			hat.AlwaysOnTop = false
+			hat.ZIndex = 1
+			hat.Parent = workspace.CurrentCamera
+		end
+		hat.Adornee = head
+		hat.Color3 = accentColor()
+	elseif hat then
+		hat:Destroy()
+		hat = nil
+	end
+end)
+
+-- ---------- Third Person (своя дистанция 1-10) ----------
+local tpSaved, tpLast = nil, nil
+
+RunService.RenderStepped:Connect(function()
+	local tp = byName["Third Person"]
+	if tp and tp.on then
+		if not tpSaved then
+			tpSaved = {
+				min = player.CameraMinZoomDistance,
+				max = player.CameraMaxZoomDistance,
+				mode = player.CameraMode,
+			}
+		end
+		local d = tp.settings.Distance or 5
+		if d ~= tpLast or player.CameraMode ~= Enum.CameraMode.Classic then
+			tpLast = d
+			player.CameraMode = Enum.CameraMode.Classic
+			player.CameraMinZoomDistance = 0.5
+			player.CameraMaxZoomDistance = d
+			player.CameraMinZoomDistance = d
+		end
+	elseif tpSaved then
+		player.CameraMinZoomDistance = 0.5
+		player.CameraMaxZoomDistance = tpSaved.max
+		player.CameraMinZoomDistance = tpSaved.min
+		player.CameraMode = tpSaved.mode
+		tpSaved, tpLast = nil, nil
+	end
+end)
 
 -- ===================== Попап настроек (ПКМ) =====================
 local popup = Instance.new("Frame")
@@ -491,7 +1287,10 @@ local pl = Instance.new("UIListLayout", popup)
 pl.Padding = UDim.new(0, 6)
 pl.SortOrder = Enum.SortOrder.LayoutOrder
 
+local popupConns = {}
 local function clearPopup()
+	for _, c in ipairs(popupConns) do c:Disconnect() end
+	popupConns = {}
 	for _, c in ipairs(popup:GetChildren()) do
 		if c:IsA("GuiObject") then c:Destroy() end
 	end
@@ -581,6 +1380,176 @@ local function openSettings(m)
 		addToggle("TargetHud1", "Targethud 1", thGroup)
 		addToggle("TargetHud2", "Targethud 2", thGroup)
 		addToggle("TargetHud3", "Targethud 3", thGroup)
+
+		popLabel(order, "Watermark", 12, Color3.fromRGB(150, 150, 160), false)
+		order += 1
+		addToggle("Watermark", "Watermark", { "Watermark" })
+
+		popLabel(order, "Notify", 12, Color3.fromRGB(150, 150, 160), false)
+		order += 1
+		addToggle("Notify", "Notify", { "Notify" })
+
+		popLabel(order, "Тема", 12, Color3.fromRGB(150, 150, 160), false)
+		order += 1
+		local gb = Instance.new("TextButton")
+		gb.LayoutOrder = order
+		gb.Size = UDim2.new(1, 0, 0, 28)
+		gb.BackgroundColor3 = Color3.fromRGB(32, 32, 38)
+		gb.AutoButtonColor = false
+		gb.Font = Enum.Font.SourceSansSemibold
+		gb.TextSize = 17
+		gb.TextColor3 = Color3.fromRGB(220, 220, 225)
+		gb.Text = gradPanel.Visible and "Закрыть градиенты" or "Открыть градиенты"
+		gb.ZIndex = 51
+		gb.Parent = popup
+		Instance.new("UICorner", gb).CornerRadius = UDim.new(0, 6)
+		gb.MouseButton1Click:Connect(function()
+			gradPanel.Visible = not gradPanel.Visible
+			popup.Visible = false
+		end)
+		order += 1
+		paintAll()
+	elseif settingDefs[m.name] then
+		local boxes = {}
+		local function paintAll()
+			for key, box in pairs(boxes) do
+				box.BackgroundColor3 = m.settings[key] and Color3.fromRGB(110, 90, 255) or Color3.fromRGB(55, 55, 62)
+			end
+		end
+
+		for _, d in ipairs(settingDefs[m.name]) do
+			if d.type == "toggle" then
+				local row = Instance.new("TextButton")
+				row.LayoutOrder = order
+				row.Size = UDim2.new(1, 0, 0, 28)
+				row.BackgroundColor3 = Color3.fromRGB(32, 32, 38)
+				row.AutoButtonColor = false
+				row.Text = ""
+				row.ZIndex = 51
+				row.Parent = popup
+				Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+				local t = Instance.new("TextLabel")
+				t.BackgroundTransparency = 1
+				t.Position = UDim2.fromOffset(8, 0)
+				t.Size = UDim2.new(1, -40, 1, 0)
+				t.Font = Enum.Font.SourceSansSemibold
+				t.TextSize = 17
+				t.TextXAlignment = Enum.TextXAlignment.Left
+				t.TextColor3 = Color3.fromRGB(220, 220, 225)
+				t.Text = d.label
+				t.ZIndex = 52
+				t.Parent = row
+
+				local box = Instance.new("Frame")
+				box.AnchorPoint = Vector2.new(1, 0.5)
+				box.Position = UDim2.new(1, -8, 0.5, 0)
+				box.Size = UDim2.fromOffset(18, 18)
+				box.ZIndex = 52
+				box.Parent = row
+				Instance.new("UICorner", box).CornerRadius = UDim.new(0, 4)
+				boxes[d.key] = box
+
+				row.MouseButton1Click:Connect(function()
+					m.settings[d.key] = not m.settings[d.key]
+					paintAll()
+				end)
+			else
+				-- слайдер
+				local row = Instance.new("Frame")
+				row.LayoutOrder = order
+				row.Size = UDim2.new(1, 0, 0, 46)
+				row.BackgroundColor3 = Color3.fromRGB(32, 32, 38)
+				row.ZIndex = 51
+				row.Parent = popup
+				Instance.new("UICorner", row).CornerRadius = UDim.new(0, 6)
+
+				local title = Instance.new("TextLabel")
+				title.BackgroundTransparency = 1
+				title.Position = UDim2.fromOffset(8, 4)
+				title.Size = UDim2.new(0.6, 0, 0, 20)
+				title.Font = Enum.Font.SourceSansSemibold
+				title.TextSize = 17
+				title.TextXAlignment = Enum.TextXAlignment.Left
+				title.TextColor3 = Color3.fromRGB(220, 220, 225)
+				title.Text = d.label
+				title.ZIndex = 52
+				title.Parent = row
+
+				local valueL = Instance.new("TextLabel")
+				valueL.BackgroundTransparency = 1
+				valueL.AnchorPoint = Vector2.new(1, 0)
+				valueL.Position = UDim2.new(1, -8, 0, 4)
+				valueL.Size = UDim2.new(0.35, 0, 0, 20)
+				valueL.Font = Enum.Font.SourceSansSemibold
+				valueL.TextSize = 17
+				valueL.TextXAlignment = Enum.TextXAlignment.Right
+				valueL.TextColor3 = Color3.fromRGB(170, 160, 255)
+				valueL.ZIndex = 52
+				valueL.Parent = row
+
+				local track = Instance.new("Frame")
+				track.Position = UDim2.fromOffset(10, 32)
+				track.Size = UDim2.new(1, -20, 0, 6)
+				track.BackgroundColor3 = Color3.fromRGB(55, 55, 62)
+				track.BorderSizePixel = 0
+				track.ZIndex = 52
+				track.Parent = row
+				Instance.new("UICorner", track).CornerRadius = UDim.new(1, 0)
+
+				local fill = Instance.new("Frame")
+				fill.BackgroundColor3 = Color3.fromRGB(110, 90, 255)
+				fill.BorderSizePixel = 0
+				fill.ZIndex = 53
+				fill.Parent = track
+				Instance.new("UICorner", fill).CornerRadius = UDim.new(1, 0)
+
+				local knob = Instance.new("Frame")
+				knob.AnchorPoint = Vector2.new(0.5, 0.5)
+				knob.Size = UDim2.fromOffset(12, 12)
+				knob.BackgroundColor3 = Color3.new(1, 1, 1)
+				knob.BorderSizePixel = 0
+				knob.ZIndex = 54
+				knob.Parent = track
+				Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+
+				local function render()
+					local v = m.settings[d.key]
+					local r = (v - d.min) / (d.max - d.min)
+					fill.Size = UDim2.new(r, 0, 1, 0)
+					knob.Position = UDim2.new(r, 0, 0.5, 0)
+					valueL.Text = string.format("%.1f", v)
+				end
+
+				local dragging = false
+				local function setFromX(x)
+					local rel = math.clamp((x - track.AbsolutePosition.X) / math.max(track.AbsoluteSize.X, 1), 0, 1)
+					local v = d.min + rel * (d.max - d.min)
+					v = math.floor(v / d.step + 0.5) * d.step
+					m.settings[d.key] = math.clamp(v, d.min, d.max)
+					render()
+				end
+
+				row.InputBegan:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+						dragging = true
+						setFromX(input.Position.X)
+					end
+				end)
+				table.insert(popupConns, UIS.InputChanged:Connect(function(input)
+					if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+						setFromX(input.Position.X)
+					end
+				end))
+				table.insert(popupConns, UIS.InputEnded:Connect(function(input)
+					if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+						dragging = false
+					end
+				end))
+				render()
+			end
+			order += 1
+		end
 		paintAll()
 	else
 		popLabel(order, "Нет настроек", 13, Color3.fromRGB(150, 150, 155), false)
@@ -604,6 +1573,7 @@ local function setOn(m, v)
 	TweenService:Create(m.btn, TweenInfo.new(0.15), { BackgroundColor3 = v and COL_ON or COL_OFF }):Play()
 	m.label.TextColor3 = v and Color3.new(1, 1, 1) or Color3.fromRGB(200, 200, 205)
 	refreshHud()
+	notifyModule(m, v)
 end
 
 local function updateTag(m)
@@ -618,7 +1588,9 @@ end
 
 local function makeModule(parent, name)
 	local m = { name = name, on = false, key = nil, settings = {} }
-	if name == "Interface" then m.settings.Keybinds = true; m.settings.Keybinds2 = false; m.settings.TargetHud1 = false; m.settings.TargetHud2 = false; m.settings.TargetHud3 = false end
+	if name == "Interface" then m.settings.Keybinds = true; m.settings.Keybinds2 = false; m.settings.TargetHud1 = false; m.settings.TargetHud2 = false; m.settings.TargetHud3 = false; m.settings.Watermark = false; m.settings.Notify = false end
+	local defs = settingDefs[name]
+	if defs then for _, d in ipairs(defs) do m.settings[d.key] = d.default or false end end
 
 	local btn = Instance.new("TextButton")
 	btn.Name = name
