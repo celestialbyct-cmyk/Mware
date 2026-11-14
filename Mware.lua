@@ -619,14 +619,14 @@ fade.Parent = gui
 local root = Instance.new("Frame")
 root.AnchorPoint = Vector2.new(0.5, 0.5)
 root.Position = UDim2.fromScale(0.5, 0.5)
-root.Size = UDim2.fromOffset(460, 500)
+root.Size = UDim2.fromOffset(1090, 500)
 root.BackgroundTransparency = 1
 root.Parent = fade
 
 local scale = Instance.new("UIScale", root)
 local function updateScale()
 	local vp = workspace.CurrentCamera.ViewportSize
-	scale.Scale = math.clamp(math.min(vp.X / 520, vp.Y / 560), 0.5, 1.5)
+	scale.Scale = math.clamp(math.min(vp.X / 1150, vp.Y / 560), 0.5, 1.5)
 end
 updateScale()
 workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
@@ -1191,8 +1191,11 @@ local function makeColumn(index, title, names)
 end
 
 local categories = {
+	{ "Combat", { "Anti Bot", "Auto Armor", "Auto Explosion", "Auto Swap", "Auto Totem", "Crystal Spammer", "CrystalAura", "KillAura", "No Friend Damage", "Trigger Bot", "Velocity" } },
+	{ "Movement", { "Air Stuck", "Dog Fly", "Elytra Motion", "ElytraBooster", "ElytraFlight", "Gui Move", "No Jump Delay", "No Slow", "No Web", "Speed", "Sprint" } },
+	{ "Player", { "Auto Eat", "Auto Leave", "Auto Tool", "Auto Tpaccept", "Click Pearl", "Death Coords", "Elytra Helper", "Fast Exp", "Free Camera", "No Push", "Tape Mouse", "Teleport Back" } },
+	{ "Misc", { "Crystal Optimizer", "Discord RPC", "Fake Player", "Lony Helper", "RP Spoofer", "Streamer Mode", "UseTracker", "Interface", "AntiFling" } },
 	{ "Visual", { "ESP", "China Hat", "Third Person", "Trails" } },
-	{ "Misc", { "Interface", "AntiFling" } },
 }
 for i, cat in ipairs(categories) do
 	makeColumn(i, cat[1], cat[2])
