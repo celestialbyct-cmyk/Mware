@@ -7269,8 +7269,39 @@ local function getRole(p)
     end
     if c:FindFirstChild("Knife") or c:FindFirstChild("Classic Knife") then return "Murderer" end
     if c:FindFirstChild("Gun") or c:FindFirstChild("Classic Gun") then return "Sheriff" end
+    local rd = X.roleData and X.roleData[p.Name] -- роль от сервера: известна ещё до выдачи оружия
+    if rd then return rd end
     return "Innocent"
 end
+-- Роли до начала раунда: GetPlayerData отдаёт роли всех игроков сразу после раздачи
+X.roleData = {}
+task.spawn(function()
+    local RS = game:GetService("ReplicatedStorage")
+    local remote
+    while true do
+        task.wait(1)
+        pcall(function()
+            if not remote or not remote.Parent then
+                remote = RS:FindFirstChild("GetPlayerData", true)
+            end
+            if remote and remote:IsA("RemoteFunction") then
+                local data = remote:InvokeServer()
+                if type(data) == "table" then
+                    local out = {}
+                    for name, info in pairs(data) do
+                        if type(info) == "table" and type(info.Role) == "string" then
+                            local r = info.Role
+                            if r == "Murderer" then out[name] = "Murderer"
+                            elseif r == "Sheriff" or r == "Hero" then out[name] = "Sheriff"
+                            elseif r == "Innocent" then out[name] = "Innocent" end
+                        end
+                    end
+                    X.roleData = out
+                end
+            end
+        end)
+    end
+end)
 local function roleColor(r)
     return r == "Murderer" and C.RED or (r == "Sheriff" and Color3.fromRGB(59, 130, 246) or C.GREEN)
 end
@@ -8142,7 +8173,7 @@ local function doGrabGun()
     pcall(function() hum.Sit = false end)
     local got = false
     local t0 = os.clock()
-    while os.clock() - t0 < 3 do
+    while os.clock() - t0 < 2 do
         hrp = myHrp()
         if not hrp or not g.Parent then break end -- нет персонажа / пистолет уже забрали
         hrp.CFrame = part.CFrame * CFrame.new(0, 1.5, 0)
@@ -8158,7 +8189,7 @@ local function doGrabGun()
             end
         end
         if hasGun() then got = true break end
-        task.wait(0.1)
+        RunService.Heartbeat:Wait() -- каждый кадр, без пауз
     end
     hrp = myHrp()
     if hrp then
@@ -8171,8 +8202,8 @@ end
 
 task.spawn(function()
     while true do
-        task.wait(0.3)
-        if grabGun and not grabBusy and os.clock() - grabLast > 3 then
+        task.wait(0.05)
+        if grabGun and not grabBusy and os.clock() - grabLast > 0.4 then
             if not pcall(doGrabGun) then grabBusy = false end
         end
     end
@@ -11316,7 +11347,24 @@ tEm.Slider("Emotes: Speed", 0.1, 3, 1, "x", function(v)
     an.speed = v
     if an.track then pcall(function() an.track:AdjustSpeed(v) end) end
 end, 0.1)
-tEm.Button("🕺 Griddy", function() anPlay(GRIDDY_IDS, true, true, "Griddy", true) end)
+tEm.Button("🕺 Griddy", function() anPlay(GRIDDY_IDS, true, true, "Griddy", false) end) -- не прерывается ходьбой
+local gr = {on = false}
+tEm.Toggle("Griddy: всегда (играет и при ходьбе)", false, function(v)
+    gr.on = v
+    if v then anPlay(GRIDDY_IDS, true, true, "Griddy", false) else anStop() end
+end, ICONS.FLY)
+task.spawn(function() -- если анимация слетела (респавн, смерть), включаем снова
+    while true do
+        task.wait(1)
+        if gr.on and not an.busy then
+            local h = myHum()
+            local playing = an.track and an.track.IsPlaying
+            if h and h.Health > 0 and not playing then
+                anPlay(GRIDDY_IDS, true, true, "Griddy", false)
+            end
+        end
+    end
+end)
 tEm.Button("👋 Hello", function() anPlay({"3576686446"}, false, true, "Hello", true) end)
 tEm.Button("🤷 Shrug", function() anPlay({"3576968026"}, false, true, "Shrug", true) end)
 tEm.Button("🫡 Salute", function() anPlay({"3333474484"}, false, true, "Salute", true) end)
