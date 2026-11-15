@@ -8193,149 +8193,113 @@ local function flingPlayer(target)
     if flyEnabled then notify("Выключи Fly перед флингом") return end
     local hrp, hum = myHrp(), myHum()
     local tc = target.Character
-    local thrp = tc and tc:FindFirstChild("HumanoidRootPart")
-    if not hrp or not hum or not thrp then notify("Игрок недоступен") return end
+    local thrp0 = tc and tc:FindFirstChild("HumanoidRootPart")
+    if not hrp or not hum or not thrp0 then notify("Игрок недоступен") return end
 
     flingBusy = true
     local char = myChar()
     local origin = hrp.CFrame
-    local startPos = thrp.Position
+    local startPos = thrp0.Position
     local prevAnti = antiFling
-    antiFling = false          -- иначе AntiFling уберёт коллизии и фling не сработает
-    toggleNoclip(false)        -- чтобы наши части сталкивались с целью
-    local hold = hrp:FindFirstChild("MWFarmHold") -- удержание автофарма мешает скорости
+    antiFling = false
+    toggleNoclip(false) -- наши части должны сталкиваться с целью
+    local hold = hrp:FindFirstChild("MWFarmHold")
     if hold then hold:Destroy() end
     hrp.Anchored = false
     pcall(function() hum.Sit = false end)
 
-    -- запоминаем физику своих частей, чтобы вернуть после флинга
-    local saved, allParts, direct = {}, {}, {}
+    -- не умираем от падения в бездну во время флинга
+    local oldDestroy = workspace.FallenPartsDestroyHeight
+    pcall(function() workspace.FallenPartsDestroyHeight = 0 / 0 end)
+
+    local saved, allParts = {}, {}
     for _, d in ipairs(char:GetDescendants()) do
         if d:IsA("BasePart") then
             saved[d] = {cc = d.CanCollide, pp = d.CustomPhysicalProperties, ml = d.Massless}
             allParts[#allParts + 1] = d
-            if fl.bypass then -- тяжёлые части: больше импульс при ударе
+            if fl.bypass then
                 d.CustomPhysicalProperties = PhysicalProperties.new(100, 0.3, 0, 1, 1)
                 d.Massless = false
             end
         end
     end
-    for _, d in ipairs(char:GetChildren()) do
-        if d:IsA("BasePart") then direct[#direct + 1] = d end
-    end
-    local offs = {Vector3.new(0, 0, 0), Vector3.new(0, 2, 0), Vector3.new(0, -2, 0), Vector3.new(1.5, 0, 0),
-        Vector3.new(-1.5, 0, 0), Vector3.new(0, 0, 1.5), Vector3.new(0, 0, -1.5)}
 
+    local thrust = Instance.new("BodyThrust")
+    thrust.Name = "MWFlingThrust"
+    thrust.Force = Vector3.new(9e9, 9e9, 9e9)
+    thrust.Location = hrp.Position
+    thrust.Parent = hrp
+
+    local offs = {Vector3.new(0, 1.5, 0), Vector3.new(0, -1.5, 0), Vector3.new(2.25, 1.5, 0),
+        Vector3.new(-2.25, -1.5, 0), Vector3.new(0, 1.5, 2), Vector3.new(0, -1.5, -2)}
     local flung = false
-    local stepConn, hbConn, rsConn
     local ok, err = pcall(function()
-        local tries = math.clamp(math.floor(tonumber(fl.tries) or 3), 1, 5)
-        local per = math.clamp((tonumber(fl.time) or 4) / tries, 0.8, 5)
-        for attempt = 1, tries do
-            if flung then break end
-            local th0 = target.Character and target.Character:FindFirstChildOfClass("Humanoid")
-            if fl.spectate and th0 then pcall(function() Camera.CameraSubject = th0 end) end -- держит цель прогруженной
-            local lead = getRtt() * 0.5 + 0.02 -- упреждение на задержку сети
-            -- до физики гасим свою скорость и держим столкновения включёнными
-            -- (в режиме Bypass включены ВСЕ части, в том числе аксессуары и инструменты)
-            stepConn = RunService.Stepped:Connect(function()
-                local h = myHrp()
-                if h then
-                    h.AssemblyLinearVelocity = Vector3.zero
-                    h.AssemblyAngularVelocity = Vector3.zero
-                end
-                for _, p in ipairs(fl.bypass and allParts or direct) do
-                    if p.Parent and not p.CanCollide then p.CanCollide = true end
-                end
-            end)
-            rsConn = RunService.RenderStepped:Connect(function() -- гасим скорость ещё и до кадра
-                local h = myHrp()
-                if h then
-                    h.AssemblyLinearVelocity = Vector3.zero
-                    h.AssemblyAngularVelocity = Vector3.zero
-                end
-            end)
-            -- после физики ставим огромную скорость и сидим в цели (сервер видит удар, нас не уносит)
-            local idx = attempt
-            hbConn = RunService.Heartbeat:Connect(function()
-                local h = myHrp()
-                local tch = target.Character
-                local tr = tch and tch:FindFirstChild("HumanoidRootPart")
-                if not h or not tr then return end
-                idx = idx % #offs + 1
-                local pred = tr.Position + tr.AssemblyLinearVelocity * lead
-                h.CFrame = CFrame.new(pred + offs[idx])
-                    * CFrame.Angles(math.random() * 6.28, math.random() * 6.28, math.random() * 6.28)
-                h.AssemblyLinearVelocity = Vector3.new(1e6, 1e6, 1e6)
-                h.AssemblyAngularVelocity = Vector3.zero -- без вращения: персонажа не ломает и не убивает
-            end)
-            local t0 = os.clock()
-            while os.clock() - t0 < per do
-                task.wait(0.05)
-                local tch = target.Character
-                local tr = tch and tch:FindFirstChild("HumanoidRootPart")
-                local th = tch and tch:FindFirstChildOfClass("Humanoid")
-                if not tr or not th or th.Health <= 0 or not myHrp() then flung = true break end
-                if tr.AssemblyLinearVelocity.Magnitude > 250 or (tr.Position - startPos).Magnitude > 140
-                    or tr.Position.Y < startPos.Y - 300 then
-                    task.wait(0.15)
-                    flung = true
-                    break
-                end
-            end
-            hbConn:Disconnect() hbConn = nil
-            stepConn:Disconnect() stepConn = nil
-            if rsConn then rsConn:Disconnect() rsConn = nil end
+        local limit = math.clamp(tonumber(fl.time) or 4, 1, 15)
+        local th0 = tc:FindFirstChildOfClass("Humanoid")
+        if fl.spectate and th0 then pcall(function() Camera.CameraSubject = th0 end) end
+        local t0 = os.clock()
+        local step = 0
+        while os.clock() - t0 < limit do
+            local tch = target.Character
+            local tr = tch and tch:FindFirstChild("HumanoidRootPart")
+            local th = tch and tch:FindFirstChildOfClass("Humanoid")
             local h = myHrp()
-            if h then
-                h.AssemblyLinearVelocity = Vector3.zero
-                h.AssemblyAngularVelocity = Vector3.zero
+            if not h or not tr or not th then break end
+            if th.Health <= 0 then flung = true break end
+            if tr.AssemblyLinearVelocity.Magnitude > 400 or (tr.Position - startPos).Magnitude > 120
+                or tr.Position.Y < startPos.Y - 200 then
+                flung = true
+                break
             end
-            if not flung then task.wait(0.15) end
+            step = step + 1
+            local lead = getRtt() * 0.5 + 0.02
+            local pos = tr.Position + tr.AssemblyLinearVelocity * lead + offs[step % #offs + 1]
+            h.CFrame = CFrame.new(pos) * CFrame.Angles(math.rad((step * 47) % 360), math.rad((step * 91) % 360), 0)
+            h.AssemblyLinearVelocity = Vector3.new(9e7, 9e8, 9e7)
+            h.AssemblyAngularVelocity = Vector3.new(9e8, 9e8, 9e8)
+            thrust.Location = h.Position
+            RunService.Heartbeat:Wait()
         end
     end)
 
-    if hbConn then hbConn:Disconnect() end
-    if stepConn then stepConn:Disconnect() end
-    if rsConn then rsConn:Disconnect() end
-    for part, st in pairs(saved) do -- возвращаем физику частей
+    pcall(function() thrust:Destroy() end)
+    -- возвращаемся: корень заякорен, пока гасим скорость (иначе при неудаче улетаешь сам)
+    local h0 = myHrp()
+    if h0 then h0.Anchored = true end
+    for i = 1, 30 do
+        local h = myHrp()
+        if h then
+            h.CFrame = origin
+            h.AssemblyLinearVelocity = Vector3.zero
+            h.AssemblyAngularVelocity = Vector3.zero
+        end
+        for _, p in ipairs(allParts) do
+            if p.Parent then
+                p.AssemblyLinearVelocity = Vector3.zero
+                p.AssemblyAngularVelocity = Vector3.zero
+            end
+        end
+        pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
+        RunService.Heartbeat:Wait()
+    end
+    for part, st in pairs(saved) do
         pcall(function()
             part.CanCollide = st.cc
             part.CustomPhysicalProperties = st.pp
             part.Massless = st.ml
         end)
     end
-    pcall(function() Camera.CameraSubject = myHum() or hum end)
-    -- возвращаемся: корень заякорен, пока гасим любую остаточную скорость (иначе при неудаче улетаешь сам)
-    do
-        local h0 = myHrp()
-        if h0 then h0.Anchored = true end
-        for _ = 1, 20 do
-            local h = myHrp()
-            if h then
-                h.AssemblyLinearVelocity = Vector3.zero
-                h.AssemblyAngularVelocity = Vector3.zero
-                h.CFrame = origin
-            end
-            for _, p in ipairs(allParts) do
-                if p.Parent then
-                    p.AssemblyLinearVelocity = Vector3.zero
-                    p.AssemblyAngularVelocity = Vector3.zero
-                end
-            end
+    local h1 = myHrp()
+    if h1 then
+        h1.Anchored = false
+        for _ = 1, 6 do
+            h1.AssemblyLinearVelocity = Vector3.zero
+            h1.AssemblyAngularVelocity = Vector3.zero
             RunService.Heartbeat:Wait()
         end
-        local h1 = myHrp()
-        if h1 then
-            h1.Anchored = false
-            for _ = 1, 8 do
-                h1.AssemblyLinearVelocity = Vector3.zero
-                h1.AssemblyAngularVelocity = Vector3.zero
-                RunService.Heartbeat:Wait()
-            end
-        end
-        pcall(function() hum:ChangeState(Enum.HumanoidStateType.GettingUp) end)
     end
+    pcall(function() Camera.CameraSubject = myHum() or hum end)
+    task.delay(1.5, function() pcall(function() workspace.FallenPartsDestroyHeight = oldDestroy end) end)
     antiFling = prevAnti
     toggleNoclip(noclipUser)
     flingBusy = false
@@ -10202,6 +10166,21 @@ X.buildNew = function()
     -- KNIFEMODEL: butterfly / karambit / nether (только поиск, на нож)
     ----------------------------------------------------------------
     local km = {on = false, sel = 1, size = 1, rx = 0, ry = 0, rz = 0, busy = false, fail = 0, cur = nil}
+    X.km = km
+    X.cfgExt = X.cfgExt or {}
+    X.cfgExt.knifeModel = {
+        save = function() return {on = km.on, sel = km.sel, size = km.size, rx = km.rx, ry = km.ry, rz = km.rz} end,
+        load = function(t)
+            if tonumber(t.sel) then km.sel = math.max(1, math.floor(t.sel)) end
+            if tonumber(t.size) then km.size = math.clamp(t.size, 0.1, 10) end
+            if tonumber(t.rx) then km.rx = t.rx % 360 end
+            if tonumber(t.ry) then km.ry = t.ry % 360 end
+            if tonumber(t.rz) then km.rz = t.rz % 360 end
+            km.cur = nil
+            local e = REG["KnifeModel"]
+            if e then pcall(e.set, t.on and true or false, true) end
+        end,
+    }
     local KM_SLOTS = {
         {key = "km_bf1", label = "Butterfly", q = "csgo butterfly knife"},
         {key = "km_bf2", label = "Butterfly #2", q = "butterfly knife csgo"},
@@ -11152,6 +11131,12 @@ pcall(X.buildNew)
 --------------------------------------------------
 -- ANIMATION / EMOTES / CUSTOMSKY (v11.15)
 --------------------------------------------------
+X.assetKey = function(k)
+    if type(k) ~= "string" then return false end
+    local p = k:match("^(%a+):")
+    return p == "model" or p == "sound" or p == "audio" or p == "sky"
+end
+X.cfgExt = X.cfgExt or {}
 local an = {track = nil, speed = 1, stopMove = true, busy = false, emote = false}
 local function anStop()
     if an.track then pcall(function() an.track:Stop(0.2) end) an.track = nil end
@@ -11475,6 +11460,44 @@ tSk.Button("✔ Применить ID неба", function()
     end)
 end)
 
+
+-- Сохранение в конфиг: небо, паки анимаций, звуки
+X.cfgExt.sky = {
+    save = function() return {on = sky.on, sel = sky.sel} end,
+    load = function(t)
+        local i = math.clamp(math.floor(tonumber(t.sel) or 1), 1, #SKY_SLOTS)
+        sky.sel = i
+        local r = REG["Sky: " .. SKY_SLOTS[i].label]
+        if r then pcall(r.set, true, true) end
+        local e = REG["CustomSky"]
+        if e then pcall(e.set, t.on and true or false, true) end
+    end,
+}
+X.cfgExt.animPack = {
+    save = function() return {name = packSel and packSel[1] or ""} end,
+    load = function(t)
+        local found
+        for _, p in ipairs(PACKS) do if p[1] == t.name then found = p end end
+        if found and isR15() then
+            packSel = found
+            pcall(packApply, found)
+        elseif not found then
+            pcall(packReset)
+        end
+    end,
+}
+X.cfgExt.sounds = {
+    save = function() return {gun = snd.gun, sel = snd.sel, sn = sn.on, snsel = sn.sel} end,
+    load = function(t)
+        if tonumber(t.sel) then snd.sel = math.clamp(math.floor(t.sel), 1, #SOUND_SLOTS) end
+        if type(t.gun) == "boolean" then snd.gun = t.gun end
+        if snd.gun then applySoundSlot(snd.sel) end
+        if tonumber(t.snsel) then sn.sel = math.clamp(math.floor(t.snsel), 1, #SN_SLOTS) end
+        if type(t.sn) == "boolean" then sn.on = t.sn end
+        if sn.on and X.applySoundNotify then X.applySoundNotify(sn.sel) end
+    end,
+}
+
 local t9 = addTab("Configs", ICONS.UTIL)
 t9.Section("💾 Конфиги (сохранение настроек)")
 local cfgName = t9.TextBox("Имя конфига")
@@ -11514,7 +11537,15 @@ local function cfgSave(name)
         data._custom = {customModel = {on = cm.on, sel = cm.sel, size = cm.size},
             gunModel = {on = gm.on, sel = gm.sel, size = gm.size, rot = gm.rot}, assets = {}}
         for k, v in pairs(assetCache) do
-            if type(k) == "string" and (k:sub(1, 6) == "model:" or k:sub(1, 6) == "sound:") then data._custom.assets[k] = v end
+            if type(k) == "string" and (X.assetKey and X.assetKey(k)) then data._custom.assets[k] = v end
+        end
+    end)
+    -- Доп. состояния (KnifeModel, CustomSky, паки анимаций, звуки) сохраняются через X.cfgExt
+    pcall(function()
+        data._ext = {}
+        for k, h in pairs(X.cfgExt or {}) do
+            local okS, t = pcall(h.save)
+            if okS and type(t) == "table" then data._ext[k] = t end
         end
     end)
     -- В конфиг записывается имя и положение каждого существующего бинда.
@@ -11570,9 +11601,15 @@ local function cfgLoad(name)
         end
         if type(c.assets) == "table" then
             for k, v in pairs(c.assets) do
-                if type(k) == "string" and (k:sub(1, 6) == "model:" or k:sub(1, 6) == "sound:") and tonumber(v) then assetCache[k] = tonumber(v) end
+                if type(k) == "string" and (X.assetKey and X.assetKey(k)) and tonumber(v) then assetCache[k] = tonumber(v) end
             end
             pcall(saveAssets)
+        end
+    end
+    if type(data._ext) == "table" and X.cfgExt then
+        for k, t in pairs(data._ext) do
+            local h = X.cfgExt[k]
+            if h and type(t) == "table" then pcall(h.load, t) end
         end
     end
     if data._ui and X.applyUI then pcall(X.applyUI, data._ui) end
