@@ -7406,6 +7406,8 @@ RunService.Heartbeat:Connect(function(dt)
     -- Spinbot: вращение персонажа вокруг оси Y
     if spinbot.on then
         local hrp = myHrp()
+        local sh = myHum()
+        if sh and sh.AutoRotate then sh.AutoRotate = false end -- иначе ходьба разворачивает персонажа обратно
         if hrp then
             -- speed 1–50 ≈ 1–50 оборотов в секунду
             local ang = math.rad(spinbot.speed * 360 * (dt or 0.016))
@@ -7923,61 +7925,30 @@ fpsBoost = function(on)
                 table.insert(fpsSaved, {inst, prop, old})
             end)
         end
-        -- Максимальный potato / soap mode
-        pcall(function()
-            settings().Rendering.QualityLevel = Enum.QualityLevel.Level01
-            settings().Rendering.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
-            settings().Rendering.EagerBulkExecution = true
-        end)
+        local function isFx(v)
+            return v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire")
+                or v:IsA("Sparkles") or v:IsA("Beam")
+        end
+        -- текстуры, материалы и небо не трогаем: режем только то, что реально грузит FPS
+        pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Level05 end)
         save(Lighting, "GlobalShadows", false)
-        save(Lighting, "FogEnd", 200)
-        save(Lighting, "Brightness", 1)
-        save(Lighting, "OutdoorAmbient", Color3.fromRGB(128, 128, 128))
-        save(Lighting, "Ambient", Color3.fromRGB(100, 100, 100))
-        save(Lighting, "Technology", Enum.Technology.Compatibility)
         for _, v in ipairs(Lighting:GetChildren()) do
-            if v:IsA("PostEffect") then save(v, "Enabled", false)
-            elseif v:IsA("Atmosphere") then save(v, "Density", 0)
-            elseif v:IsA("Sky") then save(v, "Parent", nil) end
-        end
-        local function strip(obj)
-            for _, v in ipairs(obj:GetDescendants()) do
-                if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire")
-                    or v:IsA("Sparkles") or v:IsA("Beam") or v:IsA("PointLight")
-                    or v:IsA("SpotLight") or v:IsA("SurfaceLight") then
-                    save(v, "Enabled", false)
-                elseif v:IsA("Decal") or v:IsA("Texture") then
-                    save(v, "Transparency", 1)
-                elseif v:IsA("MeshPart") then
-                    pcall(function() v.TextureID = "" end)
-                    save(v, "Material", Enum.Material.SmoothPlastic)
-                elseif v:IsA("BasePart") and not v:IsA("Terrain") then
-                    save(v, "Material", Enum.Material.SmoothPlastic)
-                    save(v, "Reflectance", 0)
-                    if v.Material == Enum.Material.Glass or v.Material == Enum.Material.ForceField then
-                        save(v, "Transparency", math.min(v.Transparency + 0.3, 1))
-                    end
-                end
+            if v:IsA("BloomEffect") or v:IsA("BlurEffect") or v:IsA("SunRaysEffect") or v:IsA("DepthOfFieldEffect") then
+                save(v, "Enabled", false)
             end
         end
-        pcall(strip, workspace)
-        -- Периодически чистим новые эффекты
-        fpsConn = RunService.Heartbeat:Connect(function()
-            if not on then return end
-            for _, v in ipairs(workspace:GetDescendants()) do
-                if (v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire")
-                    or v:IsA("Sparkles") or v:IsA("Beam")) and v.Enabled then
-                    pcall(function() v.Enabled = false end)
-                end
-            end
+        for _, v in ipairs(workspace:GetDescendants()) do
+            if isFx(v) then save(v, "Enabled", false) end
+        end
+        -- новые эффекты гасим по событию (а не сканированием всей карты каждый кадр)
+        fpsConn = workspace.DescendantAdded:Connect(function(v)
+            if isFx(v) then pcall(function() v.Enabled = false end) end
         end)
-        notify("FPS Boost: potato mode")
+        notify("FPS Boost: вкл (графика сохранена)")
     else
         for _, s in ipairs(fpsSaved) do pcall(function() s[1][s[2]] = s[3] end) end
         fpsSaved = {}
-        pcall(function()
-            settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic
-        end)
+        pcall(function() settings().Rendering.QualityLevel = Enum.QualityLevel.Automatic end)
         notify("FPS Boost: выкл")
     end
 end
@@ -9218,6 +9189,28 @@ local MODEL_SLOTS = {
     {key = "siren", label = "Siren Head", q = "siren head morph"},
     {key = "capy", label = "Capybara", q = "capybara morph"},
     {key = "sans", label = "Sans", q = "sans morph"},
+    {key = "cm_creeper", label = "Minecraft Creeper", q = "minecraft creeper morph"},
+    {key = "cm_ender", label = "Enderman", q = "enderman morph"},
+    {key = "cm_pika", label = "Pikachu", q = "pikachu morph"},
+    {key = "cm_goku", label = "Goku", q = "goku morph"},
+    {key = "cm_naruto", label = "Naruto", q = "naruto morph"},
+    {key = "cm_mario", label = "Mario", q = "mario morph"},
+    {key = "cm_peter", label = "Peter Griffin", q = "peter griffin morph"},
+    {key = "cm_sponge", label = "SpongeBob", q = "spongebob morph"},
+    {key = "cm_patrick", label = "Patrick", q = "patrick star morph"},
+    {key = "cm_banana", label = "Banana Cat", q = "banana cat morph"},
+    {key = "cm_duck", label = "Rubber Duck", q = "rubber duck morph"},
+    {key = "cm_dragon", label = "Dragon", q = "dragon morph"},
+    {key = "cm_skeleton", label = "Skeleton", q = "skeleton morph"},
+    {key = "cm_zombie", label = "Zombie", q = "zombie morph"},
+    {key = "cm_ghost", label = "Ghost", q = "ghost morph"},
+    {key = "cm_pepe", label = "Pepe", q = "pepe frog morph"},
+    {key = "cm_amogus2", label = "Amogus Impostor", q = "among us impostor morph"},
+    {key = "cm_bear", label = "Teddy Bear", q = "teddy bear morph"},
+    {key = "cm_robot", label = "Robot", q = "robot morph"},
+    {key = "cm_cat2", label = "Cat", q = "cat morph"},
+    {key = "cm_dog", label = "Dog", q = "dog morph"},
+    {key = "cm_rooster", label = "Chicken Gun: Курица #4", q = "chicken gun hen"},
 }
 local hiddenOrig = {}
 
@@ -9327,6 +9320,16 @@ local SOUND_SLOTS = { -- exact = проверенный ID, без поиска 
     {key = "bameware", label = "bameware", id = 3124331820, exact = true},
     {key = "awp", label = "AWP (CS:GO)", q = "csgo awp"},
     {key = "deagle", label = "Deagle (CS:GO)", q = "csgo deagle"},
+    {key = "hs_mchit", label = "Minecraft Hit", q = "minecraft hit sound"},
+    {key = "hs_mcxp", label = "Minecraft XP", q = "minecraft xp orb"},
+    {key = "hs_cs2hs", label = "CS2 Headshot", q = "csgo headshot sound"},
+    {key = "hs_cs16", label = "CS 1.6 Headshot", q = "cs 1.6 headshot"},
+    {key = "hs_tf2", label = "TF2 Hitsound", q = "tf2 hitsound"},
+    {key = "hs_valo", label = "Valorant Headshot", q = "valorant headshot"},
+    {key = "hs_fort", label = "Fortnite Hitmarker", q = "fortnite hitmarker"},
+    {key = "hs_cod", label = "COD Hitmarker", q = "call of duty hitmarker"},
+    {key = "hs_pipe", label = "Metal Pipe", q = "metal pipe falling"},
+    {key = "hs_boom", label = "Vine Boom", q = "vine boom"},
 }
 local soundId = nil
 local origSounds = setmetatable({}, {__mode = "k"})
@@ -9550,7 +9553,7 @@ end -- конец блока watermark
 --------------------------------------------------
 -- NOTIFY (карточки как в Celestial) / SOUNDNOTIFY / GRADIENTS (состояние)
 --------------------------------------------------
-local nf = {on = true}
+local nf = {on = true, style = 1}
 local sn = {on = false, sel = 1, id = nil}
 -- Звуки уведомлений (короткие UI-клики / enable-disable как в клиентах)
 local SN_SLOTS = {
@@ -9560,6 +9563,14 @@ local SN_SLOTS = {
     {key = "vineboom", label = "Vine Boom", id = 6308606116, exact = true},
     {key = "oof", label = "Oof", id = 5943191430, exact = true},
     {key = "uwusn", label = "uwu", id = 8679659744, exact = true},
+    {key = "sn_mcpling", label = "Minecraft Pling", q = "minecraft pling"},
+    {key = "sn_mcclick", label = "Minecraft Click", q = "minecraft button click"},
+    {key = "sn_win", label = "Windows Notify", q = "windows notification sound"},
+    {key = "sn_discord", label = "Discord", q = "discord notification"},
+    {key = "sn_iphone", label = "iPhone", q = "iphone notification"},
+    {key = "sn_cs2ui", label = "CS2 UI", q = "csgo ui click"},
+    {key = "sn_valoui", label = "Valorant UI", q = "valorant ui sound"},
+    {key = "sn_nlsw", label = "Neverlose Toggle", q = "neverlose toggle sound"},
 }
 local grad = {on = false, sel = 1}
 
@@ -9580,38 +9591,110 @@ do -- карточки-уведомления: 1 строка - название
         task.delay(4, function() sd:Destroy() end)
     end
 
+    local NSTYLES = {
+        {name = "Celestial", h = 54, bg = Color3.fromRGB(14, 14, 20), bgT = 0.12, cr = 10, stroke = Color3.fromRGB(90, 90, 120),
+            layout = "two", icon = true, font = Enum.Font.GothamBold, f2 = Enum.Font.GothamSemibold},
+        {name = "Neverlose (CS2)", h = 50, bg = Color3.fromRGB(8, 20, 34), bgT = 0.05, cr = 6, stroke = Color3.fromRGB(20, 100, 160),
+            accent = "left", accW = 3, accFixed = Color3.fromRGB(0, 170, 255), layout = "two", bar = true,
+            font = Enum.Font.GothamBold, f2 = Enum.Font.GothamMedium, c1 = Color3.fromRGB(235, 245, 255), c2 = Color3.fromRGB(140, 180, 215)},
+        {name = "Skeet (CS)", h = 34, bg = Color3.fromRGB(17, 17, 17), bgT = 0, cr = 0, stroke = Color3.fromRGB(45, 45, 45),
+            accent = "top", grad = ColorSequence.new({ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 213, 255)),
+                ColorSequenceKeypoint.new(0.5, Color3.fromRGB(204, 74, 243)), ColorSequenceKeypoint.new(1, Color3.fromRGB(250, 220, 40))}),
+            layout = "inline", sep = " - ", font = Enum.Font.Code, size = 13},
+        {name = "Gamesense (CS)", h = 30, bg = Color3.fromRGB(20, 20, 20), bgT = 0, cr = 0, stroke = Color3.fromRGB(60, 60, 60),
+            accent = "bottom", layout = "inline", prefix = "[gamesense] ", sep = " ", font = Enum.Font.Code, size = 13,
+            c1 = Color3.fromRGB(150, 205, 0)},
+        {name = "Onetap (CS)", h = 34, bg = Color3.fromRGB(28, 28, 28), bgT = 0, cr = 2, stroke = Color3.fromRGB(70, 70, 70),
+            accent = "left", accW = 4, accFixed = Color3.fromRGB(255, 165, 0), layout = "inline", sep = ": ",
+            font = Enum.Font.SourceSansBold, size = 17},
+        {name = "Meteor (Minecraft)", h = 32, bg = Color3.fromRGB(0, 0, 0), bgT = 0.35, cr = 0, accent = "left", accW = 3,
+            accFixed = Color3.fromRGB(145, 61, 226), layout = "inline", prefix = "[Meteor] ", sep = " ",
+            font = Enum.Font.Arcade, size = 14, c1 = Color3.fromRGB(190, 140, 255)},
+        {name = "Minecraft Toast", h = 50, bg = Color3.fromRGB(52, 52, 52), bgT = 0, cr = 0, stroke = Color3.fromRGB(190, 190, 190),
+            strokeW = 2, strokeT = 0, layout = "two", icon = true, font = Enum.Font.Arcade, f2 = Enum.Font.Arcade,
+            c1 = Color3.fromRGB(255, 255, 85), c2 = Color3.new(1, 1, 1), size = 15},
+        {name = "Rise", h = 44, bg = Color3.fromRGB(18, 18, 26), bgT = 0.2, cr = 8, accent = "bottom", layout = "two",
+            font = Enum.Font.GothamBold, f2 = Enum.Font.Gotham, bar = true},
+        {name = "Wurst (Minecraft)", h = 28, bg = Color3.fromRGB(24, 24, 24), bgT = 0.1, cr = 3, accent = "left", accW = 3,
+            layout = "inline", prefix = "[Wurst] ", sep = " ", font = Enum.Font.Arcade, size = 13},
+    }
+    X.NSTYLES = NSTYLES
+
     local function makeToast(title, msg, kind)
         local old = active[title]
         if old and old.Parent then old:Destroy() end -- новое уведомление заменяет старое с тем же названием
         order = order + 1
+        local S = NSTYLES[nf.style] or NSTYLES[1]
         local col = kind == "off" and Color3.fromRGB(239, 68, 68)
             or (kind == "info" and Color3.fromRGB(110, 120, 255) or Color3.fromRGB(80, 220, 120))
-        local card = new("Frame", {Size = UDim2.new(1, 0, 0, 54), BackgroundColor3 = X.cardColor or Color3.fromRGB(14, 14, 20),
-            BackgroundTransparency = 1, BorderSizePixel = 0, LayoutOrder = order}, holder)
-        corner(10, card)
-        local stroke = new("UIStroke", {Color = Color3.fromRGB(90, 90, 120), Thickness = 1, Transparency = 1}, card)
-        local icon = new("TextLabel", {Size = UDim2.new(0, 30, 1, 0), Position = UDim2.new(0, 10, 0, 0),
-            BackgroundTransparency = 1, Text = kind == "off" and "✖" or (kind == "info" and "ℹ" or "✔"), TextColor3 = col,
-            TextSize = 22, Font = Enum.Font.GothamBold, TextTransparency = 1}, card)
-        local l1 = new("TextLabel", {Size = UDim2.new(1, -54, 0, 20), Position = UDim2.new(0, 46, 0, 8),
-            BackgroundTransparency = 1, Text = title, TextColor3 = Color3.new(1, 1, 1), TextSize = 15,
-            Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-            TextTransparency = 1}, card)
-        local l2 = new("TextLabel", {Size = UDim2.new(1, -54, 0, 18), Position = UDim2.new(0, 46, 0, 28),
-            BackgroundTransparency = 1, Text = msg, TextColor3 = Color3.fromRGB(205, 210, 220), TextSize = 12,
-            Font = Enum.Font.GothamSemibold, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
-            TextTransparency = 1}, card)
+        local ac = S.accFixed or col
+        local bg = (S.name == "Celestial" and X.cardColor) or S.bg
+        local card = new("Frame", {Size = UDim2.new(1, 0, 0, S.h), BackgroundColor3 = bg, BackgroundTransparency = 1,
+            BorderSizePixel = 0, LayoutOrder = order, ClipsDescendants = true}, holder)
+        if S.cr > 0 then corner(S.cr, card) end
+        local stroke
+        if S.stroke then
+            stroke = new("UIStroke", {Color = S.stroke, Thickness = S.strokeW or 1, Transparency = 1}, card)
+        end
+        local frames, texts = {}, {}
+        local x0 = 10
+        if S.accent == "left" then
+            frames[#frames + 1] = new("Frame", {Size = UDim2.new(0, S.accW or 3, 1, 0), BackgroundColor3 = ac,
+                BorderSizePixel = 0, BackgroundTransparency = 1}, card)
+            x0 = 14
+        elseif S.accent == "top" then
+            local a = new("Frame", {Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = S.grad and Color3.new(1, 1, 1) or ac,
+                BorderSizePixel = 0, BackgroundTransparency = 1}, card)
+            if S.grad then new("UIGradient", {Color = S.grad}, a) end
+            frames[#frames + 1] = a
+        elseif S.accent == "bottom" then
+            frames[#frames + 1] = new("Frame", {Size = UDim2.new(1, 0, 0, 2), Position = UDim2.new(0, 0, 1, -2),
+                BackgroundColor3 = ac, BorderSizePixel = 0, BackgroundTransparency = 1}, card)
+        end
+        if S.icon then
+            texts[#texts + 1] = new("TextLabel", {Size = UDim2.new(0, 30, 1, 0), Position = UDim2.new(0, 10, 0, 0),
+                BackgroundTransparency = 1, Text = kind == "off" and "✖" or (kind == "info" and "ℹ" or "✔"), TextColor3 = col,
+                TextSize = 22, Font = Enum.Font.GothamBold, TextTransparency = 1}, card)
+            x0 = 46
+        end
+        local c1 = S.c1 or Color3.new(1, 1, 1)
+        local c2 = S.c2 or Color3.fromRGB(205, 210, 220)
+        if S.layout == "two" then
+            local half = math.floor(S.h / 2)
+            texts[#texts + 1] = new("TextLabel", {Size = UDim2.new(1, -(x0 + 8), 0, half - 2), Position = UDim2.new(0, x0, 0, 5),
+                BackgroundTransparency = 1, Text = title, TextColor3 = (S.name == "Rise") and ac or c1, TextSize = S.size or 15,
+                Font = S.font, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+                TextTransparency = 1}, card)
+            texts[#texts + 1] = new("TextLabel", {Size = UDim2.new(1, -(x0 + 8), 0, half - 4), Position = UDim2.new(0, x0, 0, half + 1),
+                BackgroundTransparency = 1, Text = msg, TextColor3 = c2, TextSize = math.max(11, (S.size or 15) - 3),
+                Font = S.f2 or S.font, TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+                TextTransparency = 1}, card)
+        else
+            texts[#texts + 1] = new("TextLabel", {Size = UDim2.new(1, -(x0 + 8), 1, 0), Position = UDim2.new(0, x0, 0, 0),
+                BackgroundTransparency = 1, Text = (S.prefix or "") .. title .. (S.sep or ": ") .. msg,
+                TextColor3 = (S.c1 and S.prefix) and S.c1 or Color3.new(1, 1, 1), TextSize = S.size or 14, Font = S.font,
+                TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, TextTransparency = 1}, card)
+        end
+        local pb
+        if S.bar then
+            pb = new("Frame", {Size = UDim2.new(1, 0, 0, 2), Position = UDim2.new(0, 0, 1, -2), BackgroundColor3 = ac,
+                BorderSizePixel = 0}, card)
+            TweenService:Create(pb, TweenInfo.new(2.8, Enum.EasingStyle.Linear), {Size = UDim2.new(0, 0, 0, 2)}):Play()
+        end
         active[title] = card
         local ti = TweenInfo.new(0.25, Enum.EasingStyle.Quad)
-        TweenService:Create(card, ti, {BackgroundTransparency = 0.12}):Play()
-        TweenService:Create(stroke, ti, {Transparency = 0.4}):Play()
-        for _, lb in ipairs({icon, l1, l2}) do TweenService:Create(lb, ti, {TextTransparency = 0}):Play() end
+        TweenService:Create(card, ti, {BackgroundTransparency = S.bgT}):Play()
+        if stroke then TweenService:Create(stroke, ti, {Transparency = S.strokeT or 0.4}):Play() end
+        for _, f in ipairs(frames) do TweenService:Create(f, ti, {BackgroundTransparency = 0}):Play() end
+        for _, lb in ipairs(texts) do TweenService:Create(lb, ti, {TextTransparency = 0}):Play() end
         task.delay(2.8, function()
             if not card.Parent then return end
             local to = TweenInfo.new(0.3, Enum.EasingStyle.Quad)
             TweenService:Create(card, to, {BackgroundTransparency = 1}):Play()
-            TweenService:Create(stroke, to, {Transparency = 1}):Play()
-            for _, lb in ipairs({icon, l1, l2}) do TweenService:Create(lb, to, {TextTransparency = 1}):Play() end
+            if stroke then TweenService:Create(stroke, to, {Transparency = 1}):Play() end
+            for _, f in ipairs(frames) do TweenService:Create(f, to, {BackgroundTransparency = 1}):Play() end
+            for _, lb in ipairs(texts) do TweenService:Create(lb, to, {TextTransparency = 1}):Play() end
+            if pb then TweenService:Create(pb, to, {BackgroundTransparency = 1}):Play() end
             task.wait(0.35)
             card:Destroy()
         end)
@@ -9939,6 +10022,24 @@ local GM_SLOTS = {
     {key = "gm_deagle1", label = "Deagle", q = "deagle gun"},
     {key = "gm_deagle2", label = "Deagle #2", q = "desert eagle"},
     {key = "gm_deagle3", label = "Deagle #3", q = "deagle csgo"},
+    {key = "gm_x_ak47", label = "AK-47", q = "ak-47 gun"},
+    {key = "gm_x_m4a1", label = "M4A1", q = "m4a1 rifle"},
+    {key = "gm_x_glock", label = "Glock", q = "glock pistol"},
+    {key = "gm_x_deagle_gold", label = "Deagle Gold", q = "golden desert eagle"},
+    {key = "gm_x_famas", label = "FAMAS", q = "famas gun"},
+    {key = "gm_x_scar", label = "SCAR", q = "scar rifle"},
+    {key = "gm_x_usps", label = "USP-S", q = "usp-s pistol"},
+    {key = "gm_x_p90", label = "P90", q = "p90 gun"},
+    {key = "gm_x_revolver", label = "Revolver", q = "revolver gun"},
+    {key = "gm_x_raygun", label = "Raygun", q = "raygun"},
+    {key = "gm_x_laser", label = "Laser Gun", q = "laser gun"},
+    {key = "gm_x_water", label = "Water Gun", q = "water gun"},
+    {key = "gm_x_nerf", label = "Nerf", q = "nerf gun"},
+    {key = "gm_x_plasma", label = "Plasma Rifle", q = "plasma rifle"},
+    {key = "gm_x_shotgun", label = "Shotgun", q = "shotgun"},
+    {key = "gm_x_bow", label = "Minecraft Bow", q = "minecraft bow"},
+    {key = "gm_x_rpg", label = "RPG", q = "rpg launcher"},
+    {key = "gm_x_saber", label = "Lightsaber", q = "lightsaber"},
 }
 local gmHidden = {}
 local function gmClearAll()
@@ -10239,6 +10340,21 @@ X.buildNew = function()
         {key = "km_neth1", label = "Nether", q = "netherite sword minecraft"},
         {key = "km_neth2", label = "Nether #2", q = "minecraft netherite sword"},
         {key = "km_neth3", label = "Nether #3", q = "netherite sword"},
+        {key = "km_x_m9", label = "M9 Bayonet", q = "m9 bayonet knife"},
+        {key = "km_x_talon", label = "Talon", q = "talon knife csgo"},
+        {key = "km_x_huntsman", label = "Huntsman", q = "huntsman knife"},
+        {key = "km_x_bowie", label = "Bowie", q = "bowie knife"},
+        {key = "km_x_gut", label = "Gut Knife", q = "gut knife csgo"},
+        {key = "km_x_flip", label = "Flip Knife", q = "flip knife csgo"},
+        {key = "km_x_shadow", label = "Shadow Daggers", q = "shadow daggers"},
+        {key = "km_x_falchion", label = "Falchion", q = "falchion knife"},
+        {key = "km_x_diamond", label = "Minecraft Diamond Sword", q = "minecraft diamond sword"},
+        {key = "km_x_katana", label = "Katana", q = "katana"},
+        {key = "km_x_machete", label = "Machete", q = "machete"},
+        {key = "km_x_kunai", label = "Kunai", q = "kunai"},
+        {key = "km_x_scythe", label = "Scythe", q = "scythe"},
+        {key = "km_x_saber2", label = "Lightsaber", q = "lightsaber sword"},
+        {key = "km_x_gold", label = "Golden Knife", q = "golden knife"},
     }
     local kmHidden = {}
     local function kmClearAll()
@@ -10377,7 +10493,7 @@ X.buildNew = function()
     -- поэтому раньше чат и UserNash у других пользователей не работали.
     -- Сообщения идут через ntfy.sh (тема = сервер игры), задержка ~5 сек.
     ----------------------------------------------------------------
-    local relay = {enabled = true, users = {}, lastId = nil, ok = nil, seen = {}, startT = os.time(), onChat = nil,
+    local relay = {enabled = true, users = {}, info = {}, lastId = nil, ok = nil, seen = {}, startT = os.time(), onChat = nil,
         topic = "maneware-mm2-" .. tostring((game.JobId ~= "" and game.JobId) or game.PlaceId)}
     relay.users[LocalPlayer.UserId] = true
     local function httpReq(opts)
@@ -10396,7 +10512,10 @@ X.buildNew = function()
     local function relayHandle(d, t)
         if type(d) ~= "table" or type(d.u) ~= "number" then return end
         if d.t == "hello" then
-            if Players:GetPlayerByUserId(d.u) then relay.users[d.u] = true end
+            if Players:GetPlayerByUserId(d.u) then
+                relay.users[d.u] = true
+                relay.info[d.u] = {n = tostring(d.n or ""):sub(1, 32), nm = tostring(d.nm or ""):sub(1, 32), l = tostring(d.l or ""):sub(1, 16)}
+            end
         elseif d.t == "bye" then
             if d.u ~= LocalPlayer.UserId then relay.users[d.u] = nil end
         elseif d.t == "chat" then
@@ -10429,7 +10548,7 @@ X.buildNew = function()
         local helloSent = false
         while true do
             if relay.enabled then
-                if not helloSent then helloSent = relaySend({t = "hello", n = LocalPlayer.DisplayName}) end
+                if not helloSent then helloSent = relaySend({t = "hello", n = LocalPlayer.DisplayName, nm = LocalPlayer.Name, l = X.accLogin}) end
                 local ok, waitT = pcall(relayPoll)
                 task.wait((ok and tonumber(waitT)) or 10)
             else
@@ -10488,11 +10607,7 @@ X.buildNew = function()
     end)
     Players.PlayerRemoving:Connect(function(pl) unClear(pl) end)
 
-    local tu = addTab("UserNash", ICONS.HAT)
-    tu.Section("🏷 UserNash — лого над головой Maneware")
-    tu.Toggle("UserNash", false, function(v) un.on = v if not v then for pl in pairs(unTags) do unClear(pl) end end end, ICONS.HAT)
-    tu.Section("📡 Relay (чат + UserNash между пользователями Maneware)")
-    tu.Toggle("Maneware Relay (видимость + чат)", true, function(v) relaySetEnabled(v) end, ICONS.UTIL)
+    X.relayGet = function() return relay.users, relay.info end
 
     ----------------------------------------------------------------
     -- CHATMANEWARE: локальный чат для юзеров Maneware
@@ -10635,7 +10750,8 @@ X.buildNew = function()
         end
     end)
 
-    chatAdd("System", "Чат Maneware готов. Видят только пользователи Maneware на этом сервере (задержка ~5 сек).")
+    pcall(function() chatGui:Destroy() end) -- чат убран
+    X.chatBtnShow = function() end
 end
 end)() -- v10/v11 блок
 
@@ -10665,7 +10781,13 @@ t1.Toggle("Fly (джойстик + ▲▼)", false, function(v)
 end, ICONS.FLY)
 t1.Slider("Скорость полёта", 10, 150, 50, " st/s", function(v) flySpeed = v end)
 t1.Toggle("Infinite Jump", false, function(v) infJump = v end, ICONS.FLY)
-t1.Toggle("Spinbot", false, function(v) spinbot.on = v end, ICONS.TARGET)
+t1.Toggle("Spinbot", false, function(v)
+    spinbot.on = v
+    if not v then
+        local sh = myHum()
+        if sh then sh.AutoRotate = true end
+    end
+end, ICONS.TARGET)
 t1.Slider("Spinbot: Speed", 1, 50, 20, "", function(v) spinbot.speed = v end)
 
 -- Визуалы
@@ -11130,6 +11252,14 @@ t16.Button("➖ GUI меньше", function()
 end)
 t16.Section("🔔 Notify (карточки как в Celestial)")
 t16.Toggle("Notify", true, function(v) nf.on = v end, ICONS.UTIL)
+do
+    local nsLabels = {}
+    for i, s in ipairs(X.NSTYLES) do nsLabels[i] = s.name end
+    radioGroup(t16, "NotifyStyle: ", nsLabels, 1, function(i, changed)
+        nf.style = i
+        if changed then notify("Notify: стиль " .. nsLabels[i]) end
+    end, ICONS.UTIL)
+end
 t16.Section("🔊 SoundNotify")
 local labelsSN = {}
 for i, sl in ipairs(SN_SLOTS) do labelsSN[i] = sl.label end
@@ -11182,7 +11312,7 @@ pcall(X.buildNew)
 X.assetKey = function(k)
     if type(k) ~= "string" then return false end
     local p = k:match("^(%a+):")
-    return p == "model" or p == "sound" or p == "audio" or p == "sky" or p == "mb"
+    return p == "model" or p == "sound" or p == "audio" or p == "sky" or p == "mb" or p == "mbn"
 end
 X.cfgExt = X.cfgExt or {}
 local an = {track = nil, speed = 1, stopMove = true, busy = false, emote = false}
@@ -11645,6 +11775,103 @@ if X.accPrefix == "developer" and string.lower(tostring(X.accLogin or "")) == "u
         local parts = {}
         for k, v in pairs(pRead()) do parts[#parts + 1] = k .. "=" .. tostring(v) end
         notify(#parts > 0 and table.concat(parts, ", ") or "Назначений нет")
+    end)
+end
+
+-- Unload: выключает всё и убирает интерфейс (чтобы вернуть скрипт, запусти его снова)
+t5.Section("⛔ Скрипт")
+t5.Button("⛔ Unload (выгрузить скрипт)", function()
+    task.spawn(function()
+        notify("Unload: выключаю всё…")
+        for _, e in pairs(REG) do
+            if e.kind == "toggle" then pcall(e.set, false, true) end
+        end
+        pcall(anStop)
+        pcall(packReset)
+        pcall(skyClear)
+        pcall(function() X.mbSet(false) end)
+        pcall(fpsBoost, false)
+        pcall(function()
+            local h = myHum()
+            if h then h.AutoRotate = true h.PlatformStand = false end
+        end)
+        task.wait(1)
+        for _, p in ipairs(getGuiParents()) do
+            pcall(function()
+                for _, g in ipairs(p:GetChildren()) do
+                    if g:IsA("ScreenGui") and g.Name:sub(1, 8) == "Maneware" then pcall(function() g:Destroy() end) end
+                end
+            end)
+        end
+        pcall(function()
+            local envU = (getgenv and getgenv()) or _G
+            local nl = envU.__MW_NL_OBJ
+            if nl then
+                pcall(function() nl.ScreenGui:Destroy() end)
+                pcall(function() for _, c in pairs(nl.GlobalSignals) do pcall(function() c:Disconnect() end) end end)
+            end
+            envU.__MW_NL_OBJ = nil
+        end)
+        pcall(function()
+            for _, d in ipairs(workspace:GetDescendants()) do
+                if d.Name:sub(1, 2) == "MW" and not d:IsA("Player") then pcall(function() d:Destroy() end) end
+            end
+        end)
+        pcall(function()
+            local sm = game:GetService("SoundService"):FindFirstChild("MWMusic")
+            if sm then sm:Destroy() end
+        end)
+        pcall(function() workspace.CurrentCamera.CameraSubject = myHum() end)
+    end)
+end)
+
+-- Players: список игроков со скриптом (только для создателя)
+if X.accPrefix == "developer" and string.lower(tostring(X.accLogin or "")) == "user" then
+    local tPl = addTab("Players", ICONS.HAT)
+    tPl.Section("👥 Игроки со скриптом")
+    local plHolder = tPl.Holder()
+    local plSig = ""
+    task.spawn(function()
+        while true do
+            task.wait(3)
+            pcall(function()
+                local users, info = X.relayGet()
+                local rows = {}
+                for uid in pairs(users) do
+                    local pl = Players:GetPlayerByUserId(uid)
+                    if pl then
+                        local login
+                        if uid == LocalPlayer.UserId then login = X.accLogin else login = info[uid] and info[uid].l end
+                        if not login or login == "" then login = "—" end
+                        rows[#rows + 1] = {pl.Name, pl.DisplayName, login}
+                    end
+                end
+                table.sort(rows, function(a, b) return a[1] < b[1] end)
+                local sig = #rows .. "|"
+                for _, r in ipairs(rows) do sig = sig .. r[1] .. r[3] .. "," end
+                if sig == plSig then return end
+                plSig = sig
+                for _, ch in ipairs(plHolder:GetChildren()) do
+                    if ch:IsA("Frame") then ch:Destroy() end
+                end
+                local function row(order, t1, t2, hl)
+                    local f = new("Frame", {Size = UDim2.new(1, -8, 0, 40), BackgroundColor3 = hl and Color3.fromRGB(40, 42, 80) or Color3.fromRGB(26, 28, 36),
+                        BorderSizePixel = 0, LayoutOrder = order}, plHolder)
+                    corner(8, f)
+                    new("TextLabel", {Size = UDim2.new(1, -12, 0, 20), Position = UDim2.new(0, 8, 0, 3), BackgroundTransparency = 1, Text = t1,
+                        TextColor3 = C.TEXT, TextSize = 13, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
+                        TextTruncate = Enum.TextTruncate.AtEnd}, f)
+                    new("TextLabel", {Size = UDim2.new(1, -12, 0, 16), Position = UDim2.new(0, 8, 0, 21), BackgroundTransparency = 1, Text = t2,
+                        TextColor3 = Color3.fromRGB(150, 150, 180), TextSize = 11, Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left,
+                        TextTruncate = Enum.TextTruncate.AtEnd}, f)
+                    zfix(f, 14)
+                end
+                row(0, "Всего со скриптом: " .. #rows, "обновляется каждые 3 сек", true)
+                for i, r in ipairs(rows) do
+                    row(i, r[1] .. (r[2] ~= r[1] and (" (" .. r[2] .. ")") or ""), "Логин в скрипте: " .. r[3], false)
+                end
+            end)
+        end
     end)
 end
 local t9 = addTab("Configs", ICONS.UTIL)
@@ -12253,7 +12480,7 @@ end
 makeDraggable(kbRoot, function() return EDIT.mode == "kb" end)
 
 --------------------------------------------------
--- MUSICBAR: плеер-плашка (иконка слева, название сверху, перемотка), двигается в режиме редактирования
+-- MUSICBAR: плеер-плашка (обложка слева, название сверху, перемотка), двигается в режиме редактирования
 --------------------------------------------------
 do
     local MB_TRACKS = {
@@ -12294,14 +12521,19 @@ do
         {Color3.fromRGB(52, 211, 153), Color3.fromRGB(16, 185, 129)},
         {Color3.fromRGB(251, 191, 36), Color3.fromRGB(249, 115, 22)},
     }
+    local MPS = game:GetService("MarketplaceService")
     local mb = {on = false, idx = 1, vol = 0.5, busy = false, seeking = false, gen = 0, paused = false, lastPos = nil}
+    local MB_DIR = "ManewareMusic"
+    pcall(function() if makefolder and not (isfolder and isfolder(MB_DIR)) then makefolder(MB_DIR) end end)
 
     local mbGui = makeGui("ManewareMB", 99993)
-    local mbRoot = new("Frame", {Name = "MB", Size = UDim2.new(0, 300, 0, 96), Position = UDim2.new(0.5, -150, 1, -130),
-        BackgroundColor3 = Color3.fromRGB(18, 18, 26), BorderSizePixel = 0, Visible = false, Active = false}, mbGui)
+    local mbRoot = new("Frame", {Name = "MB", Size = UDim2.new(0, 340, 0, 112), Position = UDim2.new(0.5, -170, 1, -140),
+        BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Visible = false, Active = false}, mbGui)
     X.mbRoot = mbRoot
-    corner(14, mbRoot)
-    new("UIStroke", {Color = Color3.fromRGB(60, 60, 90), Thickness = 1.5}, mbRoot)
+    corner(18, mbRoot)
+    local bgGrad = new("UIGradient", {Rotation = 120, Color = ColorSequence.new(Color3.fromRGB(34, 30, 58), Color3.fromRGB(14, 14, 22))}, mbRoot)
+    local mbStroke = new("UIStroke", {Color = Color3.new(1, 1, 1), Thickness = 1.5, Transparency = 0.15}, mbRoot)
+    local strokeGrad = new("UIGradient", {Color = ColorSequence.new(MB_COL[1][1], MB_COL[1][2])}, mbStroke)
     if uiData.mb then pcall(function() mbRoot.Position = tblToPos(uiData.mb) end) end
     makeDraggable(mbRoot, function() return EDIT.mode == "mb" end)
 
@@ -12310,35 +12542,48 @@ do
     mbSound.Volume = mb.vol
     mbSound.Parent = game:GetService("SoundService")
 
-    -- иконка песни слева
-    local icon = new("Frame", {Position = UDim2.new(0, 12, 0, 16), Size = UDim2.new(0, 64, 0, 64),
-        BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, mbRoot)
-    corner(12, icon)
-    local iconGrad = new("UIGradient", {Rotation = 45, Color = ColorSequence.new(MB_COL[1][1], MB_COL[1][2])}, icon)
-    new("TextLabel", {Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "♪", TextSize = 36,
-        Font = Enum.Font.GothamBold, TextColor3 = Color3.new(1, 1, 1)}, icon)
+    -- обложка слева
+    local cover = new("Frame", {Position = UDim2.new(0, 14, 0, 17), Size = UDim2.new(0, 78, 0, 78),
+        BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, ClipsDescendants = true}, mbRoot)
+    corner(14, cover)
+    local iconGrad = new("UIGradient", {Rotation = 45, Color = ColorSequence.new(MB_COL[1][1], MB_COL[1][2])}, cover)
+    new("TextLabel", {Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "♪", TextSize = 42,
+        Font = Enum.Font.GothamBold, TextColor3 = Color3.new(1, 1, 1)}, cover)
+    local coverImg = new("ImageLabel", {Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Image = "",
+        ScaleType = Enum.ScaleType.Crop, Visible = false}, cover)
 
-    -- название сверху
-    local title = new("TextLabel", {Position = UDim2.new(0, 88, 0, 8), Size = UDim2.new(1, -100, 0, 20), BackgroundTransparency = 1,
-        Text = MB_TRACKS[1].title, TextColor3 = Color3.fromRGB(240, 240, 247), TextSize = 13, Font = Enum.Font.GothamBold,
+    local title = new("TextLabel", {Position = UDim2.new(0, 106, 0, 10), Size = UDim2.new(1, -150, 0, 20), BackgroundTransparency = 1,
+        Text = MB_TRACKS[1].title, TextColor3 = Color3.fromRGB(245, 245, 252), TextSize = 14, Font = Enum.Font.GothamBold,
+        TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd}, mbRoot)
+    local sub = new("TextLabel", {Position = UDim2.new(0, 106, 0, 29), Size = UDim2.new(1, -150, 0, 14), BackgroundTransparency = 1,
+        Text = "Maneware Music", TextColor3 = Color3.fromRGB(140, 140, 170), TextSize = 11, Font = Enum.Font.Gotham,
         TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd}, mbRoot)
 
+    -- эквалайзер справа сверху
+    local eq = {}
+    for i = 1, 4 do
+        eq[i] = new("Frame", {AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(1, -44 + (i - 1) * 8, 0, 34), Size = UDim2.new(0, 4, 0, 4),
+            BackgroundColor3 = MB_COL[1][1], BorderSizePixel = 0}, mbRoot)
+        corner(2, eq[i])
+    end
+
     -- перемотка
-    local seekHit = new("TextButton", {Position = UDim2.new(0, 88, 0, 32), Size = UDim2.new(1, -100, 0, 20), BackgroundTransparency = 1,
+    local seekHit = new("TextButton", {Position = UDim2.new(0, 106, 0, 48), Size = UDim2.new(1, -122, 0, 20), BackgroundTransparency = 1,
         Text = "", AutoButtonColor = false, Active = true}, mbRoot)
-    local bar = new("Frame", {Position = UDim2.new(0, 0, 0.5, -2), Size = UDim2.new(1, 0, 0, 4),
-        BackgroundColor3 = Color3.fromRGB(50, 50, 72), BorderSizePixel = 0}, seekHit)
-    corner(2, bar)
-    local fill = new("Frame", {Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(99, 102, 241), BorderSizePixel = 0}, bar)
-    corner(2, fill)
-    local knob = new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.new(0, 12, 0, 12),
+    local bar = new("Frame", {Position = UDim2.new(0, 0, 0.5, -3), Size = UDim2.new(1, 0, 0, 6),
+        BackgroundColor3 = Color3.fromRGB(52, 52, 78), BorderSizePixel = 0}, seekHit)
+    corner(3, bar)
+    local fill = new("Frame", {Size = UDim2.new(0, 0, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, bar)
+    corner(3, fill)
+    local fillGrad = new("UIGradient", {Color = ColorSequence.new(MB_COL[1][1], MB_COL[1][2])}, fill)
+    local knob = new("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 0, 0.5, 0), Size = UDim2.new(0, 13, 0, 13),
         BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, bar)
-    corner(6, knob)
-    local tCur = new("TextLabel", {Position = UDim2.new(0, 88, 0, 50), Size = UDim2.new(0, 50, 0, 12), BackgroundTransparency = 1,
-        Text = "0:00", TextColor3 = Color3.fromRGB(128, 128, 150), TextSize = 10, Font = Enum.Font.Gotham,
+    corner(7, knob)
+    local tCur = new("TextLabel", {Position = UDim2.new(0, 106, 0, 67), Size = UDim2.new(0, 50, 0, 12), BackgroundTransparency = 1,
+        Text = "0:00", TextColor3 = Color3.fromRGB(140, 140, 170), TextSize = 10, Font = Enum.Font.GothamMedium,
         TextXAlignment = Enum.TextXAlignment.Left}, mbRoot)
-    local tLen = new("TextLabel", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 50), Size = UDim2.new(0, 50, 0, 12),
-        BackgroundTransparency = 1, Text = "0:00", TextColor3 = Color3.fromRGB(128, 128, 150), TextSize = 10, Font = Enum.Font.Gotham,
+    local tLen = new("TextLabel", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 67), Size = UDim2.new(0, 50, 0, 12),
+        BackgroundTransparency = 1, Text = "0:00", TextColor3 = Color3.fromRGB(140, 140, 170), TextSize = 10, Font = Enum.Font.GothamMedium,
         TextXAlignment = Enum.TextXAlignment.Right}, mbRoot)
 
     local function fmt(s)
@@ -12377,20 +12622,92 @@ do
         end
     end)
 
-    -- поиск песни в Creator Store (первый рабочий результат запоминается)
-    local function resolve(tr)
-        local key = "mb:" .. tr.key
-        local id = assetCache[key]
-        if id and audioOk(id) then return id end
-        local ids = searchAssets("audio", tr.q)
-        for i = 1, math.min(#ids, 12) do
-            if audioOk(ids[i]) then
-                assetCache[key] = ids[i]
-                pcall(saveAssets)
-                return ids[i]
+    ----------------------------------------------------------------
+    -- Поиск песни: Deezer (название, обложка, превью) + полная версия из аудио Roblox, если название совпало
+    ----------------------------------------------------------------
+    local function lowerRu(s)
+        local ok, res = pcall(function()
+            local out = {}
+            for _, cp in utf8.codes(s) do
+                if cp >= 1040 and cp <= 1071 then cp = cp + 32
+                elseif cp == 1025 then cp = 1105
+                elseif cp >= 65 and cp <= 90 then cp = cp + 32 end
+                out[#out + 1] = utf8.char(cp)
+            end
+            return table.concat(out)
+        end)
+        return ok and res or string.lower(s)
+    end
+    local function tokens(s)
+        local t = {}
+        for w in lowerRu(s):gmatch("[%w\128-\255]+") do
+            if (utf8.len(w) or #w) >= 2 then t[#t + 1] = w end
+        end
+        return t
+    end
+    local function nameScore(name, qt)
+        local n = lowerRu(name)
+        local hit = 0
+        for _, w in ipairs(qt) do
+            if n:find(w, 1, true) then hit = hit + 1 end
+        end
+        return hit / math.max(#qt, 1)
+    end
+    local function httpBin(url)
+        local rq = request or http_request or (syn and syn.request) or (http and http.request)
+        if not rq then return nil end
+        local ok, res = pcall(rq, {Url = url, Method = "GET"})
+        if ok and type(res) == "table" and res.StatusCode == 200 and res.Body and #res.Body > 0 then return res.Body end
+        return nil
+    end
+    local function ensureFile(path, url)
+        local have = false
+        pcall(function() have = isfile and isfile(path) end)
+        if have then return true end
+        local data = httpBin(url)
+        if not data then return false end
+        return (pcall(writefile, path, data))
+    end
+    local function toAsset(path)
+        local ok, a = pcall(function() return getcustomasset(path) end)
+        return ok and a or nil
+    end
+    local function deezer(tr)
+        local body = httpBin("https://api.deezer.com/search?q=" .. HttpService:UrlEncode(tr.q) .. "&limit=8")
+        if not body then return nil end
+        local ok, d = pcall(function() return HttpService:JSONDecode(body) end)
+        if not ok or type(d) ~= "table" or type(d.data) ~= "table" then return nil end
+        local qt = tokens(tr.q)
+        local best, bs
+        for _, it in ipairs(d.data) do
+            if type(it) == "table" and it.preview and it.preview ~= "" then
+                local nm = ((it.artist and it.artist.name) or "") .. " " .. (it.title or "")
+                local sc = nameScore(nm, qt)
+                if sc >= 0.4 and (not bs or sc > bs) then best, bs = it, sc end
             end
         end
-        return nil
+        return best
+    end
+    -- полная версия из аудио Roblox: берём только если название реально совпало с запросом
+    local function robloxMatch(tr)
+        local key = "mbn:" .. tr.key
+        local cached = assetCache[key]
+        if cached and audioOk(cached) then return cached end
+        local qt = tokens(tr.q)
+        local ids = searchAssets("audio", tr.q)
+        local best, bestScore
+        for i = 1, math.min(#ids, 12) do
+            local ok, info = pcall(function() return MPS:GetProductInfo(ids[i], Enum.InfoType.Asset) end)
+            if ok and type(info) == "table" then
+                local sc = nameScore(tostring(info.Name or ""), qt)
+                if sc >= 0.7 and (not bestScore or sc > bestScore) and audioOk(ids[i]) then best, bestScore = ids[i], sc end
+            end
+        end
+        if best then
+            assetCache[key] = best
+            pcall(saveAssets)
+        end
+        return best
     end
 
     local playBtn
@@ -12408,35 +12725,65 @@ do
         local tr = MB_TRACKS[i]
         local col = MB_COL[(i - 1) % #MB_COL + 1]
         iconGrad.Color = ColorSequence.new(col[1], col[2])
-        fill.BackgroundColor3 = col[1]
-        title.Text = "⏳ " .. tr.title
+        strokeGrad.Color = ColorSequence.new(col[1], col[2])
+        fillGrad.Color = ColorSequence.new(col[1], col[2])
+        for _, f in ipairs(eq) do f.BackgroundColor3 = col[1] end
+        coverImg.Visible = false
+        title.Text = tr.title
+        sub.Text = "⏳ Ищу песню…"
         pcall(function() mbSound:Stop() end)
         mb.busy = true
         task.spawn(function()
-            local id
-            pcall(function() id = resolve(tr) end)
+            local dz, rid, soundAsset
+            pcall(function()
+                dz = deezer(tr)
+                if dz then
+                    local base = MB_DIR .. "/" .. tr.key
+                    local cu = dz.album and (dz.album.cover_medium or dz.album.cover)
+                    if cu and ensureFile(base .. ".jpg", cu) then
+                        local ca = toAsset(base .. ".jpg")
+                        if ca and gen == mb.gen then
+                            coverImg.Image = ca
+                            coverImg.Visible = true
+                        end
+                    end
+                    if dz.title and dz.artist and gen == mb.gen then
+                        title.Text = dz.artist.name .. " - " .. dz.title
+                    end
+                end
+                rid = robloxMatch(tr)
+                if not rid and dz and dz.preview and ensureFile(MB_DIR .. "/" .. tr.key .. ".mp3", dz.preview) then
+                    soundAsset = toAsset(MB_DIR .. "/" .. tr.key .. ".mp3")
+                end
+            end)
             if gen ~= mb.gen then return end
             mb.busy = false
-            if not id then
-                title.Text = tr.title .. " (не найдено)"
+            if rid then
+                mbSound.SoundId = "rbxassetid://" .. rid
+                sub.Text = "Полная версия"
+            elseif soundAsset then
+                mbSound.SoundId = soundAsset
+                sub.Text = "Превью 30 сек • Deezer"
+            else
+                sub.Text = "Не нашлась • выбери другую"
                 notify("MusicBar: не нашёл «" .. tr.title .. "»")
                 return
             end
-            mbSound.SoundId = "rbxassetid://" .. id
             pcall(function() game:GetService("ContentProvider"):PreloadAsync({mbSound}) end)
             if gen ~= mb.gen then return end
-            title.Text = tr.title
             mbSound.TimePosition = 0
             mbSound:Play()
             setPlayIcon()
         end)
     end
 
-    local function ctl(x, text, fn)
-        local b = new("TextButton", {Position = UDim2.new(0, x, 0, 66), Size = UDim2.new(0, 38, 0, 24), BackgroundColor3 = Color3.fromRGB(34, 34, 50),
-            Text = text, TextColor3 = Color3.fromRGB(240, 240, 247), TextSize = 14, Font = Enum.Font.GothamBold,
+    local function ctl(x, w, text, fn, accent)
+        local b = new("TextButton", {Position = UDim2.new(0, x, 0, 82), Size = UDim2.new(0, w, 0, 24),
+            BackgroundColor3 = accent and Color3.fromRGB(99, 102, 241) or Color3.fromRGB(40, 40, 62),
+            Text = text, TextColor3 = Color3.new(1, 1, 1), TextSize = 14, Font = Enum.Font.GothamBold,
             AutoButtonColor = true, BorderSizePixel = 0}, mbRoot)
-        corner(8, b)
+        corner(12, b)
+        if accent then new("UIGradient", {Rotation = 0, Color = ColorSequence.new(MB_COL[1][1], MB_COL[1][2])}, b) end
         b.Activated:Connect(function() if not EDIT.mode then fn() end end)
         return b
     end
@@ -12455,16 +12802,24 @@ do
         end
         setPlayIcon()
     end
-    ctl(88, "⏮", prev)
-    playBtn = ctl(132, "▶", toggle)
-    ctl(176, "⏭", nextT)
+    ctl(106, 40, "⏮", prev, false)
+    playBtn = ctl(152, 56, "▶", toggle, true)
+    ctl(214, 40, "⏭", nextT, false)
 
     task.spawn(function()
+        local t = 0
         while true do
-            task.wait(0.25)
+            task.wait(0.12)
+            t = t + 0.12
             if mb.on then
+                strokeGrad.Rotation = (t * 40) % 360
                 if not mb.seeking then pcall(refresh) end
-                if mbSound.IsPlaying then
+                local playing = mbSound.IsPlaying
+                for i, f in ipairs(eq) do
+                    local h = playing and math.random(4, 22) or 4
+                    f.Size = UDim2.new(0, 4, 0, h)
+                end
+                if playing then
                     mb.lastPos = mbSound.TimePosition
                 elseif not mb.busy and not mb.paused and mb.lastPos and mbSound.TimeLength > 0
                     and mb.lastPos > mbSound.TimeLength - 1.5 then
