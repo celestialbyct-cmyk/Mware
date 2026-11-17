@@ -7039,7 +7039,7 @@ MWV.TAB_ICON = {
     ["Watermark"] = "flag", ["SVO"] = "cloud", ["Trigger/Assist"] = "crosshairs", ["HUD"] = "chart-line",
     ["Configs"] = "folder", ["Binds"] = "key", ["KillFeed"] = "four-bars-horizontal-left-aligned",
     ["GunModel"] = "cube-vertexes", ["JumpCircle"] = "arrow-large-up", ["KnifeModel"] = "hammer-code",
-    ["UserNash"] = "head-male", ["Animation"] = "arrow-spin-clockwise", ["Emotes"] = "face-winking", ["CustomSky"] = "cloud",
+    ["UserNash"] = "head-male", ["Animation"] = "arrow-spin-clockwise", ["Emotes"] = "face-winking", ["CustomSky"] = "cloud", ["Cubes"] = "cube-vertexes", ["Base"] = "folder", ["Players"] = "head-male", ["CustomFog"] = "cloud", ["Particles"] = "circle-star", ["KillSound"] = "headphones",
 }
 
 local lastT
@@ -7160,6 +7160,13 @@ local function addTab(name, icon, order)
                 sl:SetValue(v)
             end,
         }
+    end
+
+    -- Строка с выбором цвета; возвращает корневой фрейм строки (его можно скрывать) и сам picker
+    function T.ColorPicker(text, default, callback)
+        local h = sec():AddLabel(text, true)
+        local cp = h:AddColorPicker({Default = default, Callback = function(c) if callback then callback(c) end end})
+        return h.Root, cp
     end
 
     function T.Button(text, callback)
@@ -10592,7 +10599,7 @@ X.buildNew = function()
     -- поэтому раньше чат и UserNash у других пользователей не работали.
     -- Сообщения идут через ntfy.sh (тема = сервер игры), задержка ~5 сек.
     ----------------------------------------------------------------
-    local relay = {enabled = true, users = {}, info = {}, lastId = nil, ok = nil, seen = {}, startT = os.time(), onChat = nil,
+    local relay = {enabled = true, users = {}, info = {}, all = {}, lastId = nil, ok = nil, seen = {}, startT = os.time(), onChat = nil,
         topic = "maneware-mm2-" .. tostring((game.JobId ~= "" and game.JobId) or game.PlaceId)}
     relay.users[LocalPlayer.UserId] = true
     local function httpReq(opts)
@@ -10608,14 +10615,37 @@ X.buildNew = function()
             Headers = {["Content-Type"] = "text/plain"}, Body = HttpService:JSONEncode(tbl)})
         return res ~= nil and (res.StatusCode == 200 or res.Success == true)
     end
+    X.relaySend = relaySend
+    local PFX_OK = {default = true, tester = true, tiktok = true, developer = true}
     local function relayHandle(d, t)
         if type(d) ~= "table" or type(d.u) ~= "number" then return end
+        if d.t == "prefix" then -- префикс, выданный создателем (логин user)
+            local me = string.lower(tostring(X.accLogin or ""))
+            if me ~= "" and me ~= "user" and string.lower(tostring(d.s or "")) == "user"
+                and string.lower(tostring(d.l or "")) == me and PFX_OK[d.p] then
+                X.accPrefix = d.p
+                pcall(function()
+                    local f = "ManewarePrefixes.json"
+                    local tbl = {}
+                    if isfile and isfile(f) then tbl = HttpService:JSONDecode(readfile(f)) end
+                    tbl[me] = d.p
+                    writefile(f, HttpService:JSONEncode(tbl))
+                end)
+                if relay.startT and (tonumber(t) or 0) >= relay.startT - 2 then
+                    notify("Тебе выдан префикс: " .. d.p)
+                end
+            end
+            return
+        end
         if d.t == "hello" then
+            relay.all[d.u] = {n = tostring(d.n or ""):sub(1, 32), nm = tostring(d.nm or ""):sub(1, 32),
+                l = tostring(d.l or ""):sub(1, 16), t = tonumber(t) or os.time(), off = nil}
             if Players:GetPlayerByUserId(d.u) then
                 relay.users[d.u] = true
                 relay.info[d.u] = {n = tostring(d.n or ""):sub(1, 32), nm = tostring(d.nm or ""):sub(1, 32), l = tostring(d.l or ""):sub(1, 16)}
             end
         elseif d.t == "bye" then
+            if relay.all[d.u] then relay.all[d.u].off = tonumber(t) or os.time() end
             if d.u ~= LocalPlayer.UserId then relay.users[d.u] = nil end
         elseif d.t == "chat" then
             if d.u ~= LocalPlayer.UserId and (tonumber(t) or 0) >= relay.startT - 2
@@ -10707,6 +10737,7 @@ X.buildNew = function()
     Players.PlayerRemoving:Connect(function(pl) unClear(pl) end)
 
     X.relayGet = function() return relay.users, relay.info end
+    X.relayGetAll = function() return relay.all end
 
     ----------------------------------------------------------------
     -- CHATMANEWARE: локальный чат для юзеров Maneware
@@ -11860,7 +11891,10 @@ if X.accPrefix == "developer" and string.lower(tostring(X.accLogin or "")) == "u
         if l == "user" then notify("Префикс создателя менять нельзя") return end
         local d = pRead()
         d[l] = pSel
-        if pWrite(d) then notify(l .. " → " .. pSel) else notify("Не удалось записать файл") end
+        pWrite(d)
+        local sent = false
+        pcall(function() sent = X.relaySend({t = "prefix", l = l, p = pSel, s = X.accLogin}) end)
+        notify(sent and (l .. " → " .. pSel .. " (отправлено)") or "Не отправилось: нет связи с relay")
     end)
     tP.Button("↩ Сбросить префикс логина", function()
         local l = pLogin()
@@ -11868,7 +11902,9 @@ if X.accPrefix == "developer" and string.lower(tostring(X.accLogin or "")) == "u
         local d = pRead()
         d[l] = nil
         pWrite(d)
-        notify(l .. " → по умолчанию")
+        local sent = false
+        pcall(function() sent = X.relaySend({t = "prefix", l = l, p = "default", s = X.accLogin}) end)
+        notify(sent and (l .. " → default (отправлено)") or "Не отправилось: нет связи с relay")
     end)
     tP.Button("📋 Показать назначенные", function()
         local parts = {}
@@ -11923,54 +11959,522 @@ t5.Button("⛔ Unload (выгрузить скрипт)", function()
     end)
 end)
 
--- Players: список игроков со скриптом (только для создателя)
+-- Players + Base: только для создателя (логин user)
 if X.accPrefix == "developer" and string.lower(tostring(X.accLogin or "")) == "user" then
+    local BASE_FILE = "ManewareBase.json"
+    local function baseRead()
+        local ok, d = pcall(function()
+            if isfile and isfile(BASE_FILE) then return HttpService:JSONDecode(readfile(BASE_FILE)) end
+        end)
+        return (ok and type(d) == "table") and d or {}
+    end
+    local function baseWrite(t)
+        pcall(function() writefile(BASE_FILE, HttpService:JSONEncode(t)) end)
+    end
+    local function ago(sec)
+        sec = math.max(0, sec)
+        if sec < 60 then return "только что" end
+        if sec < 3600 then return math.floor(sec / 60) .. " мин назад" end
+        if sec < 86400 then return math.floor(sec / 3600) .. " ч назад" end
+        return math.floor(sec / 86400) .. " дн назад"
+    end
+
+    local base = baseRead() -- логин -> {l, nm, n, uid, last}: все, кого когда-либо видели (хранится на этом устройстве)
+    local function mergeAll()
+        local changed = false
+        for uid, i in pairs(X.relayGetAll()) do
+            if i.l and i.l ~= "" then
+                local k = string.lower(i.l)
+                local b = base[k]
+                if not b then b = {} base[k] = b changed = true end
+                local last = math.max(i.t or 0, i.off or 0)
+                if b.l ~= i.l or b.nm ~= i.nm or b.n ~= i.n or b.uid ~= uid or (b.last or 0) < last then changed = true end
+                b.l, b.nm, b.n, b.uid = i.l, i.nm, i.n, uid
+                b.last = math.max(b.last or 0, last)
+            end
+        end
+        if changed then baseWrite(base) end
+    end
+
     local tPl = addTab("Players", ICONS.HAT)
-    tPl.Section("👥 Игроки со скриптом")
+    tPl.Section("👥 Онлайн со скриптом (все серверы)")
     local plHolder = tPl.Holder()
-    local plSig = ""
+    local tBase = addTab("Base", ICONS.HAT)
+    tBase.Section("🗃 База пользователей (логин, ник Roblox)")
+    local baseHolder = tBase.Holder()
+    local plSig, baseSig = "", ""
+
+    local function fillRows(holder, rows)
+        for _, ch in ipairs(holder:GetChildren()) do
+            if ch:IsA("Frame") then ch:Destroy() end
+        end
+        for i, r in ipairs(rows) do
+            local f = new("Frame", {Size = UDim2.new(1, -8, 0, 40), BackgroundColor3 = r[3] and Color3.fromRGB(40, 42, 80) or Color3.fromRGB(26, 28, 36),
+                BorderSizePixel = 0, LayoutOrder = i}, holder)
+            corner(8, f)
+            new("TextLabel", {Size = UDim2.new(1, -12, 0, 20), Position = UDim2.new(0, 8, 0, 3), BackgroundTransparency = 1, Text = r[1],
+                TextColor3 = C.TEXT, TextSize = 13, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd}, f)
+            new("TextLabel", {Size = UDim2.new(1, -12, 0, 16), Position = UDim2.new(0, 8, 0, 21), BackgroundTransparency = 1, Text = r[2],
+                TextColor3 = Color3.fromRGB(150, 150, 180), TextSize = 11, Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left,
+                TextTruncate = Enum.TextTruncate.AtEnd}, f)
+            zfix(f, 14)
+        end
+    end
+
     task.spawn(function()
         while true do
             task.wait(3)
             pcall(function()
-                local users, info = X.relayGet()
-                local rows = {}
-                for uid in pairs(users) do
-                    local pl = Players:GetPlayerByUserId(uid)
-                    if pl then
-                        local login
-                        if uid == LocalPlayer.UserId then login = X.accLogin else login = info[uid] and info[uid].l end
-                        if not login or login == "" then login = "—" end
-                        rows[#rows + 1] = {pl.Name, pl.DisplayName, login}
+                mergeAll()
+                local all = X.relayGetAll()
+                local now = os.time()
+                -- Players: все, кто онлайн со скриптом (на любом сервере)
+                local rows, here = {}, 0
+                for uid, i in pairs(all) do
+                    if not i.off then
+                        local inSrv = Players:GetPlayerByUserId(uid) ~= nil
+                        if inSrv then here = here + 1 end
+                        local nm = i.nm ~= "" and i.nm or "?"
+                        local dn = (i.n ~= "" and i.n ~= nm) and (" (" .. i.n .. ")") or ""
+                        rows[#rows + 1] = {nm .. dn, "Логин: " .. ((i.l ~= "" and i.l) or "—") .. " • " ..
+                            (inSrv and "на этом сервере" or "на другом сервере") .. " • зашёл " .. ago(now - (i.t or now)), false, i.l}
                     end
                 end
                 table.sort(rows, function(a, b) return a[1] < b[1] end)
-                local sig = #rows .. "|"
-                for _, r in ipairs(rows) do sig = sig .. r[1] .. r[3] .. "," end
-                if sig == plSig then return end
-                plSig = sig
-                for _, ch in ipairs(plHolder:GetChildren()) do
-                    if ch:IsA("Frame") then ch:Destroy() end
+                local sig = #rows .. "|" .. here
+                for _, r in ipairs(rows) do sig = sig .. r[1] .. r[2] end
+                if sig ~= plSig then
+                    plSig = sig
+                    table.insert(rows, 1, {"Онлайн со скриптом: " .. #rows, "на этом сервере: " .. here .. " • обновляется каждые 3 сек", true})
+                    fillRows(plHolder, rows)
                 end
-                local function row(order, t1, t2, hl)
-                    local f = new("Frame", {Size = UDim2.new(1, -8, 0, 40), BackgroundColor3 = hl and Color3.fromRGB(40, 42, 80) or Color3.fromRGB(26, 28, 36),
-                        BorderSizePixel = 0, LayoutOrder = order}, plHolder)
-                    corner(8, f)
-                    new("TextLabel", {Size = UDim2.new(1, -12, 0, 20), Position = UDim2.new(0, 8, 0, 3), BackgroundTransparency = 1, Text = t1,
-                        TextColor3 = C.TEXT, TextSize = 13, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
-                        TextTruncate = Enum.TextTruncate.AtEnd}, f)
-                    new("TextLabel", {Size = UDim2.new(1, -12, 0, 16), Position = UDim2.new(0, 8, 0, 21), BackgroundTransparency = 1, Text = t2,
-                        TextColor3 = Color3.fromRGB(150, 150, 180), TextSize = 11, Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left,
-                        TextTruncate = Enum.TextTruncate.AtEnd}, f)
-                    zfix(f, 14)
+                -- Base: все зарегистрированные (логин + ник Roblox), включая офлайн
+                local list = {}
+                for k, b in pairs(base) do list[#list + 1] = b end
+                table.sort(list, function(a, b) return (a.last or 0) > (b.last or 0) end)
+                local brow, online = {}, 0
+                for _, b in ipairs(list) do
+                    local live = b.uid and all[b.uid] and not all[b.uid].off
+                    if live then online = online + 1 end
+                    local nm = (b.nm and b.nm ~= "") and b.nm or "?"
+                    local dn = (b.n and b.n ~= "" and b.n ~= nm) and (" (" .. b.n .. ")") or ""
+                    brow[#brow + 1] = {tostring(b.l), "Roblox: " .. nm .. dn .. " • " .. (live and "🟢 онлайн" or ("⚪ офлайн, был " .. ago(now - (b.last or now)))), false}
                 end
-                row(0, "Всего со скриптом: " .. #rows, "обновляется каждые 3 сек", true)
-                for i, r in ipairs(rows) do
-                    row(i, r[1] .. (r[2] ~= r[1] and (" (" .. r[2] .. ")") or ""), "Логин в скрипте: " .. r[3], false)
+                local bsig = #brow .. "|" .. online
+                for _, r in ipairs(brow) do bsig = bsig .. r[1] .. r[2] end
+                if bsig ~= baseSig then
+                    baseSig = bsig
+                    table.insert(brow, 1, {"Всего пользователей: " .. #list, "онлайн: " .. online .. " • показываются логины и ники Roblox, пароли не хранятся", true})
+                    fillRows(baseHolder, brow)
                 end
             end)
         end
     end)
+end
+
+--------------------------------------------------
+-- CUBES / CUSTOMFOG / PARTICLES (stars) / KILLSOUND
+--------------------------------------------------
+local function themeCol()
+    local ok, c = pcall(function() return X.themeColor and X.themeColor() or C.ACCENT end)
+    return (ok and typeof(c) == "Color3") and c or C.ACCENT
+end
+
+-- ===== Cubes: прозрачные светящиеся кубы падают с неба и испаряются у земли =====
+do
+    local cb = {on = false, n = 10, speed = 3, list = {}, folder = nil}
+    local rp = RaycastParams.new()
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+
+    local function groundY(x, z, fromY)
+        local excl = {}
+        if cb.folder then excl[#excl + 1] = cb.folder end
+        local ch = myChar()
+        if ch then excl[#excl + 1] = ch end
+        rp.FilterDescendantsInstances = excl
+        local r = workspace:Raycast(Vector3.new(x, fromY, z), Vector3.new(0, -500, 0), rp)
+        return r and r.Position.Y or nil
+    end
+    local function place(c, first)
+        local hrp = myHrp()
+        local base = hrp and hrp.Position or Camera.CFrame.Position
+        local ang, rad = math.random() * math.pi * 2, math.random(6, 55)
+        local x, z = base.X + math.cos(ang) * rad, base.Z + math.sin(ang) * rad
+        c.gy = groundY(x, z, base.Y + 90) or (base.Y - 3)
+        local h = first and math.random(12, 80) or math.random(60, 85)
+        c.size = math.random(10, 26) / 10
+        c.spin = Vector3.new(math.random(-100, 100), math.random(-100, 100), math.random(-100, 100)) / 100
+        c.rot = CFrame.Angles(math.random() * 6, math.random() * 6, math.random() * 6)
+        c.pos = Vector3.new(x, c.gy + h, z)
+        local base3 = themeCol()
+        c.p.Color = base3:Lerp(Color3.new(1, 1, 1), math.random() * 0.35)
+        c.p.Size = Vector3.new(c.size, c.size, c.size)
+        c.p.Transparency = 0.45
+        c.light.Brightness = 1.6
+        c.light.Color = c.p.Color
+        c.p.CFrame = CFrame.new(c.pos) * c.rot
+    end
+    local function make()
+        local p = Instance.new("Part")
+        p.Name = "MWCube"
+        p.Anchored = true
+        p.CanCollide = false
+        p.CanQuery = false
+        p.CanTouch = false
+        p.Material = Enum.Material.Neon
+        p.CastShadow = false
+        p.TopSurface = Enum.SurfaceType.Smooth
+        p.BottomSurface = Enum.SurfaceType.Smooth
+        local l = Instance.new("PointLight")
+        l.Range = 9
+        l.Shadows = false
+        l.Parent = p
+        p.Parent = cb.folder
+        local c = {p = p, light = l}
+        place(c, true)
+        return c
+    end
+    local function sync()
+        if not cb.on then return end
+        if not cb.folder or not cb.folder.Parent then
+            cb.folder = Instance.new("Folder")
+            cb.folder.Name = "MWCubes"
+            cb.folder.Parent = workspace
+            cb.list = {}
+        end
+        while #cb.list < cb.n do cb.list[#cb.list + 1] = make() end
+        while #cb.list > cb.n do
+            local c = table.remove(cb.list)
+            c.p:Destroy()
+        end
+    end
+    local function clear()
+        if cb.folder then cb.folder:Destroy() end
+        cb.folder = nil
+        cb.list = {}
+    end
+    RunService.Heartbeat:Connect(function(dt)
+        if not cb.on or not cb.folder then return end
+        for _, c in ipairs(cb.list) do
+            local p = c.p
+            if p.Parent then
+                local y = c.pos.Y - 14 * cb.speed * dt
+                c.pos = Vector3.new(c.pos.X, y, c.pos.Z)
+                c.rot = c.rot * CFrame.Angles(c.spin.X * dt * cb.speed, c.spin.Y * dt * cb.speed, c.spin.Z * dt * cb.speed)
+                local height = y - c.gy
+                local a = math.clamp((8 - height) / 8, 0, 1) -- у земли: растворяется
+                p.Transparency = 0.45 + 0.55 * a
+                local s = c.size * (1 - 0.7 * a)
+                p.Size = Vector3.new(s, s, s)
+                c.light.Brightness = 1.6 * (1 - a)
+                p.CFrame = CFrame.new(c.pos) * c.rot
+                if height <= 0.6 then place(c, false) end
+            end
+        end
+    end)
+    task.spawn(function() -- следим за количеством
+        while true do
+            task.wait(0.5)
+            if cb.on then pcall(sync) end
+        end
+    end)
+
+    local tCb = addTab("Cubes", ICONS.EYE)
+    tCb.Section("🧊 Cubes")
+    tCb.Toggle("Cubes", false, function(v)
+        cb.on = v
+        if v then sync() else clear() end
+    end, ICONS.EYE)
+    tCb.Slider("Cubes: Количество", 5, 20, 10, "", function(v) cb.n = math.floor(v) end, 1)
+    tCb.Slider("Cubes: Speed", 0.5, 10, 3, "", function(v) cb.speed = v end, 0.05)
+end
+
+-- ===== CustomFog =====
+do
+    local fg = {on = false, power = 15, sync = true, color = Color3.fromRGB(150, 150, 180), orig = nil}
+    local Lt = game:GetService("Lighting")
+    local function apply()
+        if not fg.orig then fg.orig = {Lt.FogStart, Lt.FogEnd, Lt.FogColor} end
+        Lt.FogStart = 0
+        Lt.FogEnd = math.max(25, 1200 - fg.power * 23.5)
+        Lt.FogColor = fg.sync and themeCol() or fg.color
+    end
+    local function restore()
+        if fg.orig then
+            pcall(function()
+                Lt.FogStart, Lt.FogEnd, Lt.FogColor = fg.orig[1], fg.orig[2], fg.orig[3]
+            end)
+            fg.orig = nil
+        end
+    end
+    task.spawn(function() -- игра/карта может сбрасывать туман, поэтому применяем регулярно
+        while true do
+            task.wait(0.4)
+            if fg.on then pcall(apply) end
+        end
+    end)
+    local tFg = addTab("CustomFog", ICONS.EYE)
+    tFg.Section("🌫 CustomFog")
+    local colorRow
+    tFg.Toggle("CustomFog", false, function(v)
+        fg.on = v
+        if v then pcall(apply) else restore() end
+    end, ICONS.EYE)
+    tFg.Slider("CustomFog: Сила", 1, 50, 15, "", function(v) fg.power = math.floor(v) end, 1)
+    tFg.Toggle("CustomFog: синхронизация с темой", true, function(v)
+        fg.sync = v
+        if colorRow then colorRow.Visible = not v end -- цвет тумана появляется, когда синхронизация выключена
+    end, ICONS.EYE)
+    colorRow = tFg.ColorPicker("Поменять цвет тумана", fg.color, function(c)
+        if typeof(c) == "Color3" then fg.color = c end
+    end)
+    if colorRow then colorRow.Visible = false end
+end
+
+-- ===== Particles: кастомные звёзды =====
+do
+    local STAR_B64 = "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"
+    local function b64d(s)
+        local al = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+        local map = {}
+        for i = 1, 64 do map[string.byte(al, i)] = i - 1 end
+        local out, buf, bits = {}, 0, 0
+        for i = 1, #s do
+            local v = map[string.byte(s, i)]
+            if v then
+                buf = buf * 64 + v
+                bits = bits + 6
+                if bits >= 8 then
+                    bits = bits - 8
+                    local p = 2 ^ bits
+                    out[#out + 1] = string.char(math.floor(buf / p) % 256)
+                    buf = buf % p
+                end
+            end
+        end
+        return table.concat(out)
+    end
+    local starTex = "rbxasset://textures/particles/sparkles_main.dds"
+    pcall(function()
+        if writefile and getcustomasset then
+            writefile("ManewareStar.png", b64d(STAR_B64))
+            starTex = getcustomasset("ManewareStar.png")
+        end
+    end)
+
+    local pr = {stars = false, count = 5, sync = true, walk = false, death = false, shoot = false}
+    local function starCol() return pr.sync and themeCol() or Color3.fromRGB(255, 232, 120) end
+
+    local function mkEmitter(parent, life, speed, accel)
+        local e = Instance.new("ParticleEmitter")
+        e.Texture = starTex
+        e.LightEmission = 1
+        e.LightInfluence = 0
+        e.Rate = 0
+        e.Lifetime = NumberRange.new(life[1], life[2])
+        e.Speed = NumberRange.new(speed[1], speed[2])
+        e.SpreadAngle = Vector2.new(180, 180)
+        e.Acceleration = Vector3.new(0, accel, 0) -- звёзды плавно падают
+        e.Rotation = NumberRange.new(0, 360)
+        e.RotSpeed = NumberRange.new(-70, 70)
+        e.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0, 0), NumberSequenceKeypoint.new(0.15, 1.1, 0.35),
+            NumberSequenceKeypoint.new(1, 0, 0)})
+        e.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.15, 0.05),
+            NumberSequenceKeypoint.new(0.65, 0.25), NumberSequenceKeypoint.new(1, 1)}) -- и испаряются
+        e.Color = ColorSequence.new(starCol())
+        e.Parent = parent
+        return e
+    end
+
+    -- ambient: поле звёзд над игроком
+    local field = Instance.new("Part")
+    field.Name = "MWStarField"
+    field.Anchored = true
+    field.CanCollide = false
+    field.CanQuery = false
+    field.Transparency = 1
+    field.Size = Vector3.new(46, 2, 46)
+    local ambient = mkEmitter(field, {3.5, 5}, {1, 3}, -3)
+    ambient.Shape = Enum.ParticleEmitterShape.Box
+    ambient.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+    ambient.EmissionDirection = Enum.NormalId.Bottom
+    ambient.SpreadAngle = Vector2.new(8, 8)
+
+    -- шаги: эмиттер у ног
+    local walkEm
+    local function ensureWalk()
+        local hrp = myHrp()
+        if not hrp then return nil end
+        if walkEm and walkEm.Parent and walkEm.Parent.Parent == hrp then return walkEm end
+        local at = Instance.new("Attachment")
+        at.Name = "MWStarFeet"
+        at.Position = Vector3.new(0, -2.6, 0)
+        at.Parent = hrp
+        walkEm = mkEmitter(at, {1, 1.7}, {2, 5}, -7)
+        return walkEm
+    end
+
+    local function burstAt(pos, n)
+        local part = Instance.new("Part")
+        part.Anchored = true
+        part.CanCollide = false
+        part.CanQuery = false
+        part.Transparency = 1
+        part.Size = Vector3.new(0.2, 0.2, 0.2)
+        part.CFrame = CFrame.new(pos)
+        part.Parent = workspace
+        local e = mkEmitter(part, {1.6, 2.6}, {6, 16}, -9)
+        e.Color = ColorSequence.new(starCol())
+        e:Emit(n)
+        game:GetService("Debris"):AddItem(part, 4)
+    end
+
+    RunService.Heartbeat:Connect(function()
+        local hrp = myHrp()
+        if pr.stars and hrp then
+            if field.Parent ~= workspace then field.Parent = workspace end
+            field.CFrame = CFrame.new(hrp.Position + Vector3.new(0, 16, 0))
+            ambient.Rate = pr.count * 3
+            ambient.Color = ColorSequence.new(starCol())
+        else
+            ambient.Rate = 0
+        end
+    end)
+
+    task.spawn(function() -- звёзды при ходьбе
+        while true do
+            task.wait(0.12)
+            if pr.walk then
+                pcall(function()
+                    local hum, em = myHum(), ensureWalk()
+                    if hum and em and hum.MoveDirection.Magnitude > 0.1 then
+                        em.Color = ColorSequence.new(starCol())
+                        em:Emit(math.max(1, math.floor(pr.count / 2)))
+                    end
+                end)
+            end
+        end
+    end)
+
+    -- звёзды при смерти любого игрока
+    local function hookDeath(pl)
+        local function onChar(ch)
+            local hum = ch:WaitForChild("Humanoid", 5)
+            local root = ch:WaitForChild("HumanoidRootPart", 5)
+            if not hum or not root then return end
+            hum.Died:Connect(function()
+                if pr.death then
+                    pcall(burstAt, root.Position + Vector3.new(0, 1.5, 0), pr.count * 6)
+                end
+            end)
+        end
+        if pl.Character then task.spawn(onChar, pl.Character) end
+        pl.CharacterAdded:Connect(onChar)
+    end
+    for _, pl in ipairs(Players:GetPlayers()) do hookDeath(pl) end
+    Players.PlayerAdded:Connect(hookDeath)
+
+    -- звёзды при выстреле / броске (активация оружия)
+    local function hookTool(t)
+        if not t:IsA("Tool") or t:GetAttribute("MWStarHook") then return end
+        t:SetAttribute("MWStarHook", true)
+        t.Activated:Connect(function()
+            if not pr.shoot then return end
+            local h = t:FindFirstChild("Handle")
+            local pos = h and h.Position or (myHrp() and myHrp().Position) or nil
+            if pos then pcall(burstAt, pos, pr.count * 4) end
+        end)
+    end
+    local function hookChar(ch)
+        for _, t in ipairs(ch:GetChildren()) do hookTool(t) end
+        ch.ChildAdded:Connect(hookTool)
+    end
+    local function hookBackpack(bp)
+        for _, t in ipairs(bp:GetChildren()) do hookTool(t) end
+        bp.ChildAdded:Connect(hookTool)
+    end
+    if LocalPlayer.Character then hookChar(LocalPlayer.Character) end
+    LocalPlayer.CharacterAdded:Connect(hookChar)
+    local bp0 = LocalPlayer:FindFirstChildOfClass("Backpack")
+    if bp0 then hookBackpack(bp0) end
+    LocalPlayer.ChildAdded:Connect(function(c) if c:IsA("Backpack") then hookBackpack(c) end end)
+
+    local tPr = addTab("Particles", ICONS.EYE)
+    tPr.Section("✨ Particles: Stars")
+    tPr.Toggle("Stars", false, function(v) pr.stars = v end, ICONS.EYE)
+    tPr.Slider("Stars: Количество", 1, 10, 5, "", function(v) pr.count = math.floor(v) end, 1)
+    tPr.Toggle("Stars: синхронизация с темой", true, function(v) pr.sync = v end, ICONS.EYE)
+    tPr.Toggle("Stars: при ходьбе", false, function(v) pr.walk = v end, ICONS.EYE)
+    tPr.Toggle("Stars: при смертях", false, function(v) pr.death = v end, ICONS.EYE)
+    tPr.Toggle("Stars: при стрельбе", false, function(v) pr.shoot = v end, ICONS.EYE)
+end
+
+-- ===== KillSound: звук при смерти (Totem из Minecraft) =====
+do
+    local ks = {on = false, vol = 1, id = nil}
+    local MPS = game:GetService("MarketplaceService")
+    local TOTEM_IDS = {127854195349115}
+    local snd = Instance.new("Sound")
+    snd.Name = "MWKillSound"
+    snd.Parent = game:GetService("SoundService")
+    local function resolve()
+        if ks.id then return ks.id end
+        for _, id in ipairs(TOTEM_IDS) do
+            if audioOk(id) then ks.id = id return id end
+        end
+        local ids = searchAssets("audio", "totem of undying")
+        for i = 1, math.min(#ids, 10) do
+            local ok, info = pcall(function() return MPS:GetProductInfo(ids[i], Enum.InfoType.Asset) end)
+            if ok and type(info) == "table" and string.find(string.lower(tostring(info.Name or "")), "totem", 1, true)
+                and audioOk(ids[i]) then
+                ks.id = ids[i]
+                return ids[i]
+            end
+        end
+        ks.id = TOTEM_IDS[1] -- не удалось проверить: пробуем известный ID как есть
+        return ks.id
+    end
+    local function play()
+        local id = resolve()
+        snd.SoundId = "rbxassetid://" .. tostring(id)
+        snd.Volume = ks.vol
+        snd.TimePosition = 0
+        snd:Play()
+    end
+    local function hook(pl)
+        local function onChar(ch)
+            local hum = ch:WaitForChild("Humanoid", 5)
+            if not hum then return end
+            hum.Died:Connect(function()
+                if ks.on then task.spawn(play) end
+            end)
+        end
+        if pl.Character then task.spawn(onChar, pl.Character) end
+        pl.CharacterAdded:Connect(onChar)
+    end
+    for _, pl in ipairs(Players:GetPlayers()) do hook(pl) end
+    Players.PlayerAdded:Connect(hook)
+
+    local tKs = addTab("KillSound", ICONS.UTIL)
+    tKs.Section("💀 KillSound")
+    tKs.Toggle("KillSound", false, function(v)
+        ks.on = v
+        if v then task.spawn(resolve) end
+    end, ICONS.UTIL)
+    radioGroup(tKs, "KillSound: ", {"Totem"}, 1, function() end, ICONS.UTIL)
+    tKs.Slider("KillSound: Громкость", 0, 100, 100, "%", function(v)
+        ks.vol = v / 100
+        snd.Volume = ks.vol
+    end, 1)
+    local ksBox = tKs.TextBox("ID звука вручную (вместо Totem)")
+    tKs.Button("✔ Применить ID", function()
+        local id = tonumber(ksBox.Text)
+        if not id then notify("Введи числовой ID") return end
+        ks.id = id
+        notify("KillSound: ID " .. id)
+    end)
+    tKs.Button("▶ Проверить звук", function() task.spawn(play) end)
 end
 local t9 = addTab("Configs", ICONS.UTIL)
 t9.Section("💾 Конфиги (сохранение настроек)")
@@ -13025,6 +13529,11 @@ end
 
 local THEME_ROOTS = {hubGui, toggleGui, bindGui, kbGui}
 
+X.themeColor = function() -- цвет акцента текущей темы (для Cubes/Fog/Stars)
+    local th = grad.on and THEMES[grad.sel]
+    if th and th.acc then return th.acc[1] end
+    return C.ACCENT
+end
 local function scanTheme(th)
     for _, root in ipairs(THEME_ROOTS) do
         for _, inst in ipairs(root:GetDescendants()) do
