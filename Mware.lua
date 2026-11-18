@@ -1,4 +1,4 @@
--- Maneware | вход / регистрация -> MM2
+-- Maneware | MM2
 local Players = game:GetService("Players")
 local UIS = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
@@ -6935,14 +6935,6 @@ MWV.closeBtn = new("TextButton", {Name = "MWShimClose", Size = UDim2.new(0, 1, 0
 local REG = {} -- реестр: имя настройки -> get/set (для конфигов)
 MWV.ACT = {} -- кнопки-действия (для биндов)
 local X = {}   -- общие функции между блоками
-do
-    local envA = (getgenv and getgenv()) or _G
-    local acc = envA.__MW_ACC
-    if type(acc) == "table" then
-        X.accLogin = acc.login
-        X.accPrefix = acc.prefix
-    end
-end
 
 --------------------------------------------------
 -- NEVERLOSE UI (библиотека приходит из Maneware Hub)
@@ -7039,7 +7031,7 @@ MWV.TAB_ICON = {
     ["Watermark"] = "flag", ["SVO"] = "cloud", ["Trigger/Assist"] = "crosshairs", ["HUD"] = "chart-line",
     ["Configs"] = "folder", ["Binds"] = "key", ["KillFeed"] = "four-bars-horizontal-left-aligned",
     ["GunModel"] = "cube-vertexes", ["JumpCircle"] = "arrow-large-up", ["KnifeModel"] = "hammer-code",
-    ["UserNash"] = "head-male", ["Animation"] = "arrow-spin-clockwise", ["Emotes"] = "face-winking", ["CustomSky"] = "cloud", ["Cubes"] = "cube-vertexes", ["Base"] = "folder", ["Players"] = "head-male", ["CustomFog"] = "cloud", ["Particles"] = "circle-star", ["KillSound"] = "headphones",
+    ["UserNash"] = "head-male", ["Animation"] = "arrow-spin-clockwise", ["Emotes"] = "face-winking", ["CustomSky"] = "cloud", ["Cubes"] = "cube-vertexes", ["Hitlog"] = "crosshairs", ["HandShader"] = "hammer-code", ["SelfChams"] = "eye", ["Trails"] = "flame", ["ChinaHat"] = "hat-fedora", ["Halo"] = "circle-star", ["Orbit"] = "compass", ["WorldTime"] = "cloud", ["Base"] = "folder", ["Players"] = "head-male", ["CustomFog"] = "cloud", ["Particles"] = "circle-star", ["KillSound"] = "headphones",
 }
 
 local lastT
@@ -9433,11 +9425,9 @@ end
 local np = {on = false, text = "Hidden"}
 local function displayName()
     if np.on and np.text and np.text ~= "" then return tostring(np.text) end
-    return X.accLogin or LocalPlayer.Name
+    return LocalPlayer.Name
 end
-local function wmName() -- логин + префикс справа (default / tester / tiktok / developer)
-    return displayName() .. " [" .. (X.accPrefix or "default") .. "]"
-end
+local function wmName() return displayName() end
 
 -- WATERMARK: 4 стиля (по скриншотам)
 --------------------------------------------------
@@ -9551,7 +9541,7 @@ local function wmStyle4(root)
     return function()
         lPing.Text = getPing() .. "MS"
         lMem.Text = getMem() .. " mb"
-        lNick.Text = wmName()
+        lNick.Text = displayName()
         lPlace.Text = "Загадка убийства 2"
     end
 end
@@ -9568,7 +9558,6 @@ local function wmFill(tpl)
         elseif k == "mem" then return tostring(getMem())
         elseif k == "time" then return mskTime()
         elseif k == "uid" then return tostring(MWV.UID)
-        elseif k == "pfx" then return tostring(X.accPrefix or "default")
         end
         return ""
     end))
@@ -9646,6 +9635,54 @@ local WM_DATA = {
     {n = "Ice", text = "Maneware  {name}  {time}", bg = rgb(10, 25, 40), cr = 10, stroke = rgb(120, 220, 255), font = GM, size = 14, tc = rgb(170, 235, 255)},
     {n = "Blood", text = "MANEWARE  {name}  {ping}ms", bg = rgb(22, 5, 5), cr = 6, stroke = rgb(220, 40, 40), sw = 1.5, font = GB, size = 14, tc = rgb(255, 80, 80)},
     {n = "Prefix Tag", text = "{name}   {fps} fps   {ping}ms   {time}", bg = rgb(16, 16, 24), cr = 8, stroke = rgb(60, 60, 90), font = GM, size = 13},
+    {n = "Fatality", text = "fatality.win | {name} | {fps}fps | {ping}ms", bg = rgb(25, 10, 35), accent = "left", acc = rgb(255, 50, 120), cr = 6, font = GM, size = 14},
+    {n = "Aimware", text = "aimware.net | {name} | {ping}ms | {time}", bg = rgb(30, 30, 34), accent = "top", acc = rgb(230, 60, 60), cr = 6, font = SB, size = 16},
+    {n = "Nixware", text = "nixware | {name} | {fps} fps", bg = rgb(14, 14, 30), sg = {rgb(90, 120, 255), rgb(170, 70, 255), 0}, cr = 6, font = GB, size = 14},
+    {n = "Primordial", text = "primordial | {name} | {ping}ms", bg = rgb(12, 12, 16), accent = "bottom", acc = rgb(255, 255, 255), cr = 6, font = GM, size = 14},
+    {n = "Pandora", text = "pandora | {name} | {fps}", bg = rgb(18, 12, 28), accent = "left", acc = rgb(180, 90, 255), cr = 6, font = GM, size = 14},
+    {n = "Evolve", text = "evolve | {name} | {ping}ms", bg = rgb(10, 22, 14), accent = "left", acc = rgb(60, 220, 110), cr = 6, font = GM, size = 14},
+    {n = "Legendware", text = "legendware | {name} | {fps}fps", bg = rgb(30, 14, 28), accent = "top", acc = rgb(255, 100, 200), cr = 6, font = GM, size = 14},
+    {n = "Spirthack", text = "spirthack | {name} | {ping}ms", bg = rgb(12, 18, 30), accent = "bottom", acc = rgb(80, 160, 255), cr = 0, font = CO, size = 14},
+    {n = "Ayyware", text = "ayyware >> {name} >> {fps}", bg = rgb(10, 24, 10), stroke = rgb(70, 200, 70), cr = 0, font = CO, size = 14, tc = rgb(90, 240, 90)},
+    {n = "Interwebz", text = "interwebz | {name} | {ping}ms", bg = rgb(8, 20, 24), accent = "top", acc = rgb(0, 220, 230), cr = 6, font = GM, size = 14},
+    {n = "Hysteria", text = "hysteria | {name} | {fps}fps", bg = rgb(24, 8, 8), accent = "left", acc = rgb(230, 50, 50), cr = 6, font = GM, size = 14},
+    {n = "Gamesense.pub", text = "gamesense.pub | {name} | {ping}ms | {time}", bg = rgb(15, 15, 15), accent = "bottom", acc = rgb(159, 202, 43), cr = 0, font = CO, size = 14, tc = rgb(200, 230, 120)},
+    {n = "Future (MC)", text = "Future | {fps} FPS | {ping}ms", bg = rgb(0, 0, 0), bgT = 0.4, accent = "left", acc = rgb(60, 150, 255), cr = 0, font = AR, size = 14},
+    {n = "Sigma (MC)", text = "Sigma 5.0 | {name} | {fps}", bg = rgb(20, 20, 20), bgT = 0.15, cr = 6, font = GB, size = 14},
+    {n = "Novoline (MC)", text = "Novoline b3 | {name} | {ping}ms", bg = rgb(25, 10, 40), accent = "left", acc = rgb(200, 60, 220), cr = 0, font = AR, size = 14},
+    {n = "Vape V4 (MC)", text = "Vape V4 | {name} | {fps}", bg = rgb(18, 18, 18), accent = "left", acc = rgb(55, 200, 100), cr = 6, font = GM, size = 14},
+    {n = "Exhibition (MC)", text = "Exhibition | {name} | {fps} FPS", bg = rgb(0, 0, 0), bgT = 0.5, cr = 0, font = AR, size = 14, tc = rgb(255, 150, 0)},
+    {n = "Astolfo (MC)", text = "Astolfo | {name} | {fps}fps", bg = rgb(0, 0, 0), bgT = 1, cr = 6, font = GB, size = 14, tc = rgb(255, 120, 200)},
+    {n = "Remix (MC)", text = "Remix | {name} | {ping}ms", bg = rgb(10, 10, 25), accent = "bottom", acc = rgb(90, 110, 255), cr = 6, font = GM, size = 14},
+    {n = "Tenacity (MC)", text = "Tenacity | {name} | {fps}", bg = rgb(10, 15, 30), sg = {rgb(60, 200, 255), rgb(120, 80, 255), 0}, cr = 6, font = GM, size = 14},
+    {n = "Moon (MC)", text = "Moon | {name} | {ping}ms", bg = rgb(15, 10, 30), accent = "top", acc = rgb(150, 100, 255), cr = 6, font = GM, size = 14},
+    {n = "Drip (MC)", text = "Drip | {name} | {fps}fps", bg = rgb(30, 10, 25), accent = "left", acc = rgb(255, 90, 170), cr = 6, font = GB, size = 14},
+    {n = "Flux (MC)", text = "Flux | {name} | {ping}ms", bg = rgb(8, 18, 24), accent = "left", acc = rgb(0, 230, 230), cr = 0, font = AR, size = 14},
+    {n = "Zeroday (MC)", text = "Zeroday | {name} | {fps}", bg = rgb(12, 12, 12), accent = "left", acc = rgb(230, 50, 50), cr = 0, font = AR, size = 14},
+    {n = "LiquidBounce (MC)", text = "LiquidBounce | {name} | {fps} FPS", bg = rgb(0, 0, 0), bgT = 0.45, cr = 6, font = GM, size = 14, tc = rgb(70, 160, 255)},
+    {n = "Synapse X", text = "Synapse X | {name} | {fps}fps", bg = rgb(15, 10, 10), accent = "left", acc = rgb(200, 30, 30), cr = 6, font = GM, size = 14},
+    {n = "KRNL", text = "KRNL | {name} | {ping}ms", bg = rgb(20, 12, 30), accent = "left", acc = rgb(170, 90, 230), cr = 6, font = GM, size = 14},
+    {n = "Fluxus", text = "Fluxus | {name} | {fps}fps", bg = rgb(10, 20, 12), accent = "left", acc = rgb(70, 210, 100), cr = 6, font = GM, size = 14},
+    {n = "Electron", text = "Electron | {name} | {ping}ms", bg = rgb(10, 14, 30), accent = "left", acc = rgb(60, 120, 255), cr = 6, font = GM, size = 14},
+    {n = "Script-Ware", text = "Script-Ware | {name} | {fps}", bg = rgb(12, 16, 24), accent = "left", acc = rgb(80, 150, 255), cr = 6, font = GM, size = 14},
+    {n = "Hydrogen", text = "Hydrogen | {name} | {ping}ms", bg = rgb(25, 16, 8), accent = "left", acc = rgb(255, 150, 40), cr = 6, font = GM, size = 14},
+    {n = "Delta", text = "Delta | {name} | {fps}fps", bg = rgb(10, 22, 24), accent = "left", acc = rgb(40, 210, 200), cr = 6, font = GM, size = 14},
+    {n = "Arceus X", text = "Arceus X | {name} | {ping}ms", bg = rgb(20, 12, 30), accent = "left", acc = rgb(150, 90, 255), cr = 6, font = GM, size = 14},
+    {n = "Wave", text = "Wave | {name} | {fps}fps", bg = rgb(10, 18, 30), accent = "top", acc = rgb(100, 180, 255), cr = 6, font = GM, size = 14},
+    {n = "Rust Cheat", text = "RUST | {name} | {fps} FPS", bg = rgb(30, 26, 22), stroke = rgb(200, 90, 40), cr = 6, font = SB, size = 16, tc = rgb(230, 140, 80)},
+    {n = "Valorant Cheat", text = "VALORANT | {name} | {ping}ms", bg = rgb(14, 14, 18), accent = "left", acc = rgb(255, 70, 85), cr = 6, font = GB, size = 14},
+    {n = "GTA Menu", text = "GTA | {name} | {fps} FPS", bg = rgb(0, 0, 0), bgT = 0.5, cr = 6, font = SB, size = 16, tc = rgb(110, 210, 110)},
+    {n = "Fortnite Cheat", text = "FORTNITE | {name} | {ping}ms", bg = rgb(20, 20, 45), accent = "bottom", acc = rgb(140, 90, 255), cr = 6, font = GB, size = 14},
+    {n = "PUBG Cheat", text = "PUBG | {name} | {fps}fps", bg = rgb(30, 28, 20), accent = "left", acc = rgb(255, 200, 60), cr = 6, font = GM, size = 14},
+    {n = "Apex Cheat", text = "APEX | {name} | {ping}ms", bg = rgb(25, 10, 10), accent = "top", acc = rgb(220, 50, 50), cr = 6, font = GB, size = 14},
+    {n = "Roblox Hub", text = "Roblox | {name} | {fps}fps | {ping}ms", bg = rgb(14, 14, 20), stroke = rgb(80, 80, 110), cr = 6, font = GM, size = 14},
+    {n = "Minecraft Classic", text = "Minecraft | {name} | {fps} fps", bg = rgb(40, 40, 40), stroke = rgb(170, 170, 170), cr = 0, font = AR, size = 14},
+    {n = "CS2 HUD", text = "CS2 | {name} | {ping}ms | {time}", bg = rgb(20, 22, 26), bgT = 0.1, accent = "bottom", acc = rgb(255, 180, 40), cr = 6, font = SB, size = 16},
+    {n = "CS 1.6", text = "cs 1.6 | {name} | {fps}", bg = rgb(0, 0, 0), bgT = 0.3, cr = 0, font = CO, size = 14, tc = rgb(255, 200, 60)},
+    {n = "Warface", text = "WARFACE | {name} | {ping}ms", bg = rgb(20, 24, 20), accent = "left", acc = rgb(120, 200, 70), cr = 6, font = GB, size = 14},
+    {n = "Standoff", text = "STANDOFF | {name} | {fps}", bg = rgb(24, 20, 12), accent = "left", acc = rgb(255, 170, 50), cr = 6, font = GB, size = 14},
+    {n = "Brawl", text = "BRAWL | {name} | {fps}fps", bg = rgb(20, 10, 40), sg = {rgb(255, 200, 40), rgb(255, 90, 40), 0}, cr = 6, font = GB, size = 14},
+    {n = "Terminal 2", text = "> maneware --user {name} --fps {fps}", bg = rgb(0, 0, 0), stroke = rgb(80, 200, 80), cr = 0, font = CO, size = 14, tc = rgb(80, 220, 80)},
 }
 local WM_NAMES = {"Style 1", "Style 2", "Style 3", "Style 4"}
 WM_STYLES = {wmStyle1, wmStyle2, wmStyle3, wmStyle4}
@@ -9723,6 +9760,33 @@ do -- карточки-уведомления: 1 строка - название
             font = Enum.Font.GothamBold, f2 = Enum.Font.Gotham, bar = true},
         {name = "Wurst (Minecraft)", h = 28, bg = Color3.fromRGB(24, 24, 24), bgT = 0.1, cr = 3, accent = "left", accW = 3,
             layout = "inline", prefix = "[Wurst] ", sep = " ", font = Enum.Font.Arcade, size = 13},
+        {name = "Fatality", h = 50, bg = rgb(25, 10, 35), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(255, 50, 120), layout = "two", font = Enum.Font.GothamMedium, f2 = Enum.Font.Gotham, sep = ": "},
+        {name = "Aimware", h = 46, bg = rgb(30, 30, 34), bgT = 0.08, cr = 6, accent = "top", accW = 3, accFixed = rgb(230, 60, 60), layout = "two", font = Enum.Font.SourceSansBold, sep = ": "},
+        {name = "Nixware", h = 50, bg = rgb(14, 14, 30), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(120, 110, 255), layout = "two", font = Enum.Font.GothamBold, sep = ": "},
+        {name = "Primordial", h = 46, bg = rgb(12, 12, 16), bgT = 0.08, cr = 6, accent = "bottom", accW = 3, accFixed = rgb(255, 255, 255), layout = "two", font = Enum.Font.GothamMedium, f2 = Enum.Font.Gotham, sep = ": "},
+        {name = "Pandora", h = 50, bg = rgb(18, 12, 28), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(180, 90, 255), layout = "two", font = Enum.Font.GothamMedium, f2 = Enum.Font.Gotham, sep = ": "},
+        {name = "Evolve", h = 46, bg = rgb(10, 22, 14), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(60, 220, 110), layout = "inline", font = Enum.Font.GothamMedium, f2 = Enum.Font.Gotham, prefix = "[evolve] ", sep = " ", size = 14},
+        {name = "Legendware", h = 46, bg = rgb(30, 14, 28), bgT = 0.08, cr = 6, accent = "top", accW = 3, accFixed = rgb(255, 100, 200), layout = "two", font = Enum.Font.GothamMedium, f2 = Enum.Font.Gotham, sep = ": "},
+        {name = "Future (MC)", h = 30, bg = rgb(0, 0, 0), bgT = 0.08, cr = 0, accent = "left", accW = 3, accFixed = rgb(60, 150, 255), layout = "inline", font = Enum.Font.Arcade, prefix = "[Future] ", sep = " ", size = 14},
+        {name = "Sigma (MC)", h = 44, bg = rgb(20, 20, 20), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(255, 255, 255), layout = "two", font = Enum.Font.GothamBold, sep = ": "},
+        {name = "Novoline (MC)", h = 32, bg = rgb(25, 10, 40), bgT = 0.08, cr = 0, accent = "left", accW = 3, accFixed = rgb(200, 60, 220), layout = "inline", font = Enum.Font.Arcade, prefix = "[Novoline] ", sep = " ", size = 14},
+        {name = "Vape (MC)", h = 44, bg = rgb(18, 18, 18), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(55, 200, 100), layout = "two", font = Enum.Font.GothamMedium, f2 = Enum.Font.Gotham, sep = ": "},
+        {name = "Exhibition (MC)", h = 28, bg = rgb(0, 0, 0), bgT = 0.08, cr = 0, stroke = rgb(255, 150, 0), layout = "inline", font = Enum.Font.Arcade, prefix = "[Exhibition] ", sep = " ", size = 14},
+        {name = "Astolfo (MC)", h = 32, bg = rgb(30, 10, 30), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(255, 120, 200), layout = "inline", font = Enum.Font.GothamBold, prefix = "[Astolfo] ", sep = " ", size = 14},
+        {name = "Remix (MC)", h = 44, bg = rgb(10, 10, 25), bgT = 0.08, cr = 6, accent = "bottom", accW = 3, accFixed = rgb(90, 110, 255), layout = "two", font = Enum.Font.GothamMedium, f2 = Enum.Font.Gotham, sep = ": "},
+        {name = "Tenacity (MC)", h = 46, bg = rgb(10, 15, 30), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(60, 200, 255), layout = "two", font = Enum.Font.GothamMedium, f2 = Enum.Font.Gotham, sep = ": "},
+        {name = "Moon (MC)", h = 44, bg = rgb(15, 10, 30), bgT = 0.08, cr = 6, accent = "top", accW = 3, accFixed = rgb(150, 100, 255), layout = "two", font = Enum.Font.GothamMedium, f2 = Enum.Font.Gotham, sep = ": "},
+        {name = "Drip (MC)", h = 44, bg = rgb(30, 10, 25), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(255, 90, 170), layout = "two", font = Enum.Font.GothamBold, sep = ": "},
+        {name = "LiquidBounce (MC)", h = 30, bg = rgb(0, 0, 0), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(70, 160, 255), layout = "inline", font = Enum.Font.GothamMedium, f2 = Enum.Font.Gotham, prefix = "[LiquidBounce] ", sep = " ", size = 14},
+        {name = "Synapse X", h = 46, bg = rgb(15, 10, 10), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(200, 30, 30), layout = "two", font = Enum.Font.GothamMedium, f2 = Enum.Font.Gotham, sep = ": "},
+        {name = "KRNL", h = 46, bg = rgb(20, 12, 30), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(170, 90, 230), layout = "two", font = Enum.Font.GothamMedium, f2 = Enum.Font.Gotham, sep = ": "},
+        {name = "Fluxus", h = 46, bg = rgb(10, 20, 12), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(70, 210, 100), layout = "two", font = Enum.Font.GothamMedium, f2 = Enum.Font.Gotham, sep = ": "},
+        {name = "Electron", h = 46, bg = rgb(10, 14, 30), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(60, 120, 255), layout = "two", font = Enum.Font.GothamMedium, f2 = Enum.Font.Gotham, sep = ": "},
+        {name = "Valorant", h = 48, bg = rgb(14, 14, 18), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(255, 70, 85), layout = "two", font = Enum.Font.GothamBold, sep = ": "},
+        {name = "Rust", h = 46, bg = rgb(30, 26, 22), bgT = 0.08, cr = 6, accent = "left", accW = 3, accFixed = rgb(200, 90, 40), layout = "two", font = Enum.Font.SourceSansBold, sep = ": "},
+        {name = "Fortnite", h = 48, bg = rgb(20, 20, 45), bgT = 0.08, cr = 6, accent = "bottom", accW = 3, accFixed = rgb(140, 90, 255), layout = "two", font = Enum.Font.GothamBold, sep = ": "},
+        {name = "CS2 Panel", h = 46, bg = rgb(20, 22, 26), bgT = 0.08, cr = 6, accent = "bottom", accW = 3, accFixed = rgb(255, 180, 40), layout = "two", font = Enum.Font.SourceSansBold, sep = ": "},
+        {name = "Hacker Console", h = 30, bg = rgb(0, 0, 0), bgT = 0.08, cr = 0, accent = "left", accW = 3, accFixed = rgb(80, 220, 80), layout = "inline", font = Enum.Font.Code, prefix = "> ", sep = " ", size = 14},
     }
     X.NSTYLES = NSTYLES
 
@@ -10599,7 +10663,7 @@ X.buildNew = function()
     -- поэтому раньше чат и UserNash у других пользователей не работали.
     -- Сообщения идут через ntfy.sh (тема = сервер игры), задержка ~5 сек.
     ----------------------------------------------------------------
-    local relay = {enabled = true, users = {}, info = {}, all = {}, lastId = nil, ok = nil, seen = {}, startT = os.time(), onChat = nil,
+    local relay = {enabled = true, users = {}, info = {}, lastId = nil, ok = nil, seen = {}, startT = os.time(), onChat = nil,
         topic = "maneware-mm2-" .. tostring((game.JobId ~= "" and game.JobId) or game.PlaceId)}
     relay.users[LocalPlayer.UserId] = true
     local function httpReq(opts)
@@ -10615,37 +10679,14 @@ X.buildNew = function()
             Headers = {["Content-Type"] = "text/plain"}, Body = HttpService:JSONEncode(tbl)})
         return res ~= nil and (res.StatusCode == 200 or res.Success == true)
     end
-    X.relaySend = relaySend
-    local PFX_OK = {default = true, tester = true, tiktok = true, developer = true}
     local function relayHandle(d, t)
         if type(d) ~= "table" or type(d.u) ~= "number" then return end
-        if d.t == "prefix" then -- префикс, выданный создателем (логин user)
-            local me = string.lower(tostring(X.accLogin or ""))
-            if me ~= "" and me ~= "user" and string.lower(tostring(d.s or "")) == "user"
-                and string.lower(tostring(d.l or "")) == me and PFX_OK[d.p] then
-                X.accPrefix = d.p
-                pcall(function()
-                    local f = "ManewarePrefixes.json"
-                    local tbl = {}
-                    if isfile and isfile(f) then tbl = HttpService:JSONDecode(readfile(f)) end
-                    tbl[me] = d.p
-                    writefile(f, HttpService:JSONEncode(tbl))
-                end)
-                if relay.startT and (tonumber(t) or 0) >= relay.startT - 2 then
-                    notify("Тебе выдан префикс: " .. d.p)
-                end
-            end
-            return
-        end
         if d.t == "hello" then
-            relay.all[d.u] = {n = tostring(d.n or ""):sub(1, 32), nm = tostring(d.nm or ""):sub(1, 32),
-                l = tostring(d.l or ""):sub(1, 16), t = tonumber(t) or os.time(), off = nil}
             if Players:GetPlayerByUserId(d.u) then
                 relay.users[d.u] = true
                 relay.info[d.u] = {n = tostring(d.n or ""):sub(1, 32), nm = tostring(d.nm or ""):sub(1, 32), l = tostring(d.l or ""):sub(1, 16)}
             end
         elseif d.t == "bye" then
-            if relay.all[d.u] then relay.all[d.u].off = tonumber(t) or os.time() end
             if d.u ~= LocalPlayer.UserId then relay.users[d.u] = nil end
         elseif d.t == "chat" then
             if d.u ~= LocalPlayer.UserId and (tonumber(t) or 0) >= relay.startT - 2
@@ -10737,7 +10778,6 @@ X.buildNew = function()
     Players.PlayerRemoving:Connect(function(pl) unClear(pl) end)
 
     X.relayGet = function() return relay.users, relay.info end
-    X.relayGetAll = function() return relay.all end
 
     ----------------------------------------------------------------
     -- CHATMANEWARE: локальный чат для юзеров Maneware
@@ -11427,6 +11467,30 @@ end, ICONS.EYE, {
     "Лёд",
     "Роза",
     "Токсик",
+    "Neverlose",
+    "Gamesense",
+    "Skeet",
+    "Onetap",
+    "Fatality",
+    "Aimware",
+    "Nixware",
+    "Полночь",
+    "Галактика",
+    "Лава",
+    "Лес",
+    "Аметист",
+    "Вишня",
+    "Сакура",
+    "Кибер",
+    "Вейпорвейв",
+    "Матрица",
+    "Угли",
+    "Арктика",
+    "Пастель",
+    "Synapse",
+    "Vape",
+    "Exhibition",
+    "Sigma",
 }, 1, function(i)
     grad.sel = i
     if grad.on then X.applyTheme() end
@@ -11862,57 +11926,6 @@ X.cfgExt.sounds = {
 }
 
 
--- Префиксы: менять может только аккаунт создателя (логин user)
-if X.accPrefix == "developer" and string.lower(tostring(X.accLogin or "")) == "user" then
-    local PFILE = "ManewarePrefixes.json"
-    local POPTS = {"default", "tester", "tiktok", "developer"}
-    local function pRead()
-        local ok, d = pcall(function()
-            if isfile and isfile(PFILE) then return HttpService:JSONDecode(readfile(PFILE)) end
-        end)
-        return (ok and type(d) == "table") and d or {}
-    end
-    local function pWrite(t)
-        return pcall(function() writefile(PFILE, HttpService:JSONEncode(t)) end)
-    end
-    local tP = addTab("Prefix", ICONS.UTIL)
-    tP.Section("🏷 Префиксы игроков")
-    local pBox = tP.TextBox("Логин игрока")
-    local pSel = "default"
-    radioGroup(tP, "Prefix: ", POPTS, 1, function(i) pSel = POPTS[i] end, ICONS.UTIL)
-    local function pLogin()
-        local l = tostring(pBox.Text or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        if #l < 3 or l:find("[^%w_]") then notify("Введи логин (3–16 символов)") return nil end
-        return l:lower()
-    end
-    tP.Button("✔ Назначить выбранный префикс", function()
-        local l = pLogin()
-        if not l then return end
-        if l == "user" then notify("Префикс создателя менять нельзя") return end
-        local d = pRead()
-        d[l] = pSel
-        pWrite(d)
-        local sent = false
-        pcall(function() sent = X.relaySend({t = "prefix", l = l, p = pSel, s = X.accLogin}) end)
-        notify(sent and (l .. " → " .. pSel .. " (отправлено)") or "Не отправилось: нет связи с relay")
-    end)
-    tP.Button("↩ Сбросить префикс логина", function()
-        local l = pLogin()
-        if not l then return end
-        local d = pRead()
-        d[l] = nil
-        pWrite(d)
-        local sent = false
-        pcall(function() sent = X.relaySend({t = "prefix", l = l, p = "default", s = X.accLogin}) end)
-        notify(sent and (l .. " → default (отправлено)") or "Не отправилось: нет связи с relay")
-    end)
-    tP.Button("📋 Показать назначенные", function()
-        local parts = {}
-        for k, v in pairs(pRead()) do parts[#parts + 1] = k .. "=" .. tostring(v) end
-        notify(#parts > 0 and table.concat(parts, ", ") or "Назначений нет")
-    end)
-end
-
 -- Unload: выключает всё и убирает интерфейс (чтобы вернуть скрипт, запусти его снова)
 t5.Section("⛔ Скрипт")
 t5.Button("⛔ Unload (выгрузить скрипт)", function()
@@ -11959,119 +11972,6 @@ t5.Button("⛔ Unload (выгрузить скрипт)", function()
     end)
 end)
 
--- Players + Base: только для создателя (логин user)
-if X.accPrefix == "developer" and string.lower(tostring(X.accLogin or "")) == "user" then
-    local BASE_FILE = "ManewareBase.json"
-    local function baseRead()
-        local ok, d = pcall(function()
-            if isfile and isfile(BASE_FILE) then return HttpService:JSONDecode(readfile(BASE_FILE)) end
-        end)
-        return (ok and type(d) == "table") and d or {}
-    end
-    local function baseWrite(t)
-        pcall(function() writefile(BASE_FILE, HttpService:JSONEncode(t)) end)
-    end
-    local function ago(sec)
-        sec = math.max(0, sec)
-        if sec < 60 then return "только что" end
-        if sec < 3600 then return math.floor(sec / 60) .. " мин назад" end
-        if sec < 86400 then return math.floor(sec / 3600) .. " ч назад" end
-        return math.floor(sec / 86400) .. " дн назад"
-    end
-
-    local base = baseRead() -- логин -> {l, nm, n, uid, last}: все, кого когда-либо видели (хранится на этом устройстве)
-    local function mergeAll()
-        local changed = false
-        for uid, i in pairs(X.relayGetAll()) do
-            if i.l and i.l ~= "" then
-                local k = string.lower(i.l)
-                local b = base[k]
-                if not b then b = {} base[k] = b changed = true end
-                local last = math.max(i.t or 0, i.off or 0)
-                if b.l ~= i.l or b.nm ~= i.nm or b.n ~= i.n or b.uid ~= uid or (b.last or 0) < last then changed = true end
-                b.l, b.nm, b.n, b.uid = i.l, i.nm, i.n, uid
-                b.last = math.max(b.last or 0, last)
-            end
-        end
-        if changed then baseWrite(base) end
-    end
-
-    local tPl = addTab("Players", ICONS.HAT)
-    tPl.Section("👥 Онлайн со скриптом (все серверы)")
-    local plHolder = tPl.Holder()
-    local tBase = addTab("Base", ICONS.HAT)
-    tBase.Section("🗃 База пользователей (логин, ник Roblox)")
-    local baseHolder = tBase.Holder()
-    local plSig, baseSig = "", ""
-
-    local function fillRows(holder, rows)
-        for _, ch in ipairs(holder:GetChildren()) do
-            if ch:IsA("Frame") then ch:Destroy() end
-        end
-        for i, r in ipairs(rows) do
-            local f = new("Frame", {Size = UDim2.new(1, -8, 0, 40), BackgroundColor3 = r[3] and Color3.fromRGB(40, 42, 80) or Color3.fromRGB(26, 28, 36),
-                BorderSizePixel = 0, LayoutOrder = i}, holder)
-            corner(8, f)
-            new("TextLabel", {Size = UDim2.new(1, -12, 0, 20), Position = UDim2.new(0, 8, 0, 3), BackgroundTransparency = 1, Text = r[1],
-                TextColor3 = C.TEXT, TextSize = 13, Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left,
-                TextTruncate = Enum.TextTruncate.AtEnd}, f)
-            new("TextLabel", {Size = UDim2.new(1, -12, 0, 16), Position = UDim2.new(0, 8, 0, 21), BackgroundTransparency = 1, Text = r[2],
-                TextColor3 = Color3.fromRGB(150, 150, 180), TextSize = 11, Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left,
-                TextTruncate = Enum.TextTruncate.AtEnd}, f)
-            zfix(f, 14)
-        end
-    end
-
-    task.spawn(function()
-        while true do
-            task.wait(3)
-            pcall(function()
-                mergeAll()
-                local all = X.relayGetAll()
-                local now = os.time()
-                -- Players: все, кто онлайн со скриптом (на любом сервере)
-                local rows, here = {}, 0
-                for uid, i in pairs(all) do
-                    if not i.off then
-                        local inSrv = Players:GetPlayerByUserId(uid) ~= nil
-                        if inSrv then here = here + 1 end
-                        local nm = i.nm ~= "" and i.nm or "?"
-                        local dn = (i.n ~= "" and i.n ~= nm) and (" (" .. i.n .. ")") or ""
-                        rows[#rows + 1] = {nm .. dn, "Логин: " .. ((i.l ~= "" and i.l) or "—") .. " • " ..
-                            (inSrv and "на этом сервере" or "на другом сервере") .. " • зашёл " .. ago(now - (i.t or now)), false, i.l}
-                    end
-                end
-                table.sort(rows, function(a, b) return a[1] < b[1] end)
-                local sig = #rows .. "|" .. here
-                for _, r in ipairs(rows) do sig = sig .. r[1] .. r[2] end
-                if sig ~= plSig then
-                    plSig = sig
-                    table.insert(rows, 1, {"Онлайн со скриптом: " .. #rows, "на этом сервере: " .. here .. " • обновляется каждые 3 сек", true})
-                    fillRows(plHolder, rows)
-                end
-                -- Base: все зарегистрированные (логин + ник Roblox), включая офлайн
-                local list = {}
-                for k, b in pairs(base) do list[#list + 1] = b end
-                table.sort(list, function(a, b) return (a.last or 0) > (b.last or 0) end)
-                local brow, online = {}, 0
-                for _, b in ipairs(list) do
-                    local live = b.uid and all[b.uid] and not all[b.uid].off
-                    if live then online = online + 1 end
-                    local nm = (b.nm and b.nm ~= "") and b.nm or "?"
-                    local dn = (b.n and b.n ~= "" and b.n ~= nm) and (" (" .. b.n .. ")") or ""
-                    brow[#brow + 1] = {tostring(b.l), "Roblox: " .. nm .. dn .. " • " .. (live and "🟢 онлайн" or ("⚪ офлайн, был " .. ago(now - (b.last or now)))), false}
-                end
-                local bsig = #brow .. "|" .. online
-                for _, r in ipairs(brow) do bsig = bsig .. r[1] .. r[2] end
-                if bsig ~= baseSig then
-                    baseSig = bsig
-                    table.insert(brow, 1, {"Всего пользователей: " .. #list, "онлайн: " .. online .. " • показываются логины и ники Roblox, пароли не хранятся", true})
-                    fillRows(baseHolder, brow)
-                end
-            end)
-        end
-    end)
-end
 
 --------------------------------------------------
 -- CUBES / CUSTOMFOG / PARTICLES (stars) / KILLSOUND
@@ -12080,13 +11980,32 @@ local function themeCol()
     local ok, c = pcall(function() return X.themeColor and X.themeColor() or C.ACCENT end)
     return (ok and typeof(c) == "Color3") and c or C.ACCENT
 end
+local function rainbowCol(off)
+    return Color3.fromHSV(((os.clock() * 0.25) + (off or 0)) % 1, 0.8, 1)
+end
+local function safe(name, fn) -- один сбойный модуль не ломает остальные вкладки
+    local ok, err = pcall(fn)
+    if not ok then warn("[Maneware] " .. name .. ": " .. tostring(err)) end
+end
+X.themeCol, X.rainbowCol, X.safe = themeCol, rainbowCol, safe
 
--- ===== Cubes: прозрачные светящиеся кубы падают с неба и испаряются у земли =====
-do
+-- ===== Cubes: падают на землю, чуть лежат и плавно исчезают =====
+safe("Cubes", function()
     local cb = {on = false, n = 10, speed = 3, list = {}, folder = nil}
+    local tCb = addTab("Cubes", ICONS.EYE)
+    tCb.Section("🧊 Cubes")
+    tCb.Toggle("Cubes", false, function(v)
+        cb.on = v
+        if not v then
+            if cb.folder then cb.folder:Destroy() end
+            cb.folder, cb.list = nil, {}
+        end
+    end, ICONS.EYE)
+    tCb.Slider("Cubes: Количество", 5, 20, 10, "", function(v) cb.n = math.floor(v) end, 1)
+    tCb.Slider("Cubes: Speed", 0.5, 10, 3, "", function(v) cb.speed = v end, 0.05)
+
     local rp = RaycastParams.new()
     rp.FilterType = Enum.RaycastFilterType.Exclude
-
     local function groundY(x, z, fromY)
         local excl = {}
         if cb.folder then excl[#excl + 1] = cb.folder end
@@ -12102,33 +12021,25 @@ do
         local ang, rad = math.random() * math.pi * 2, math.random(6, 55)
         local x, z = base.X + math.cos(ang) * rad, base.Z + math.sin(ang) * rad
         c.gy = groundY(x, z, base.Y + 90) or (base.Y - 3)
-        local h = first and math.random(12, 80) or math.random(60, 85)
         c.size = math.random(10, 26) / 10
         c.spin = Vector3.new(math.random(-100, 100), math.random(-100, 100), math.random(-100, 100)) / 100
         c.rot = CFrame.Angles(math.random() * 6, math.random() * 6, math.random() * 6)
-        c.pos = Vector3.new(x, c.gy + h, z)
-        local base3 = themeCol()
-        c.p.Color = base3:Lerp(Color3.new(1, 1, 1), math.random() * 0.35)
+        c.pos = Vector3.new(x, c.gy + (first and math.random(12, 80) or math.random(60, 85)), z)
+        c.p.Color = themeCol():Lerp(Color3.new(1, 1, 1), math.random() * 0.35)
+        c.light.Color = c.p.Color
+        c.light.Brightness = 1.6
         c.p.Size = Vector3.new(c.size, c.size, c.size)
         c.p.Transparency = 0.45
-        c.light.Brightness = 1.6
-        c.light.Color = c.p.Color
+        c.st, c.t = "fall", 0
         c.p.CFrame = CFrame.new(c.pos) * c.rot
     end
     local function make()
         local p = Instance.new("Part")
         p.Name = "MWCube"
-        p.Anchored = true
-        p.CanCollide = false
-        p.CanQuery = false
-        p.CanTouch = false
+        p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
         p.Material = Enum.Material.Neon
-        p.CastShadow = false
-        p.TopSurface = Enum.SurfaceType.Smooth
-        p.BottomSurface = Enum.SurfaceType.Smooth
         local l = Instance.new("PointLight")
-        l.Range = 9
-        l.Shadows = false
+        l.Range, l.Shadows = 9, false
         l.Parent = p
         p.Parent = cb.folder
         local c = {p = p, light = l}
@@ -12144,96 +12055,97 @@ do
             cb.list = {}
         end
         while #cb.list < cb.n do cb.list[#cb.list + 1] = make() end
-        while #cb.list > cb.n do
-            local c = table.remove(cb.list)
-            c.p:Destroy()
-        end
-    end
-    local function clear()
-        if cb.folder then cb.folder:Destroy() end
-        cb.folder = nil
-        cb.list = {}
+        while #cb.list > cb.n do table.remove(cb.list):Destroy() end
     end
     RunService.Heartbeat:Connect(function(dt)
         if not cb.on or not cb.folder then return end
         for _, c in ipairs(cb.list) do
             local p = c.p
             if p.Parent then
-                local y = c.pos.Y - 14 * cb.speed * dt
-                c.pos = Vector3.new(c.pos.X, y, c.pos.Z)
-                c.rot = c.rot * CFrame.Angles(c.spin.X * dt * cb.speed, c.spin.Y * dt * cb.speed, c.spin.Z * dt * cb.speed)
-                local height = y - c.gy
-                local a = math.clamp((8 - height) / 8, 0, 1) -- у земли: растворяется
-                p.Transparency = 0.45 + 0.55 * a
-                local s = c.size * (1 - 0.7 * a)
-                p.Size = Vector3.new(s, s, s)
-                c.light.Brightness = 1.6 * (1 - a)
+                if c.st == "fall" then
+                    c.pos = c.pos - Vector3.new(0, 14 * cb.speed * dt, 0)
+                    c.rot = c.rot * CFrame.Angles(c.spin.X * dt * cb.speed, c.spin.Y * dt * cb.speed, c.spin.Z * dt * cb.speed)
+                    if c.pos.Y - c.gy <= c.size / 2 then -- коснулся земли: лежит
+                        c.pos = Vector3.new(c.pos.X, c.gy + c.size / 2, c.pos.Z)
+                        c.st, c.t, c.rest = "rest", 0, math.random(15, 26) / 10
+                    end
+                elseif c.st == "rest" then
+                    c.t = c.t + dt
+                    if c.t >= c.rest then c.st, c.t = "fade", 0 end
+                else -- плавно исчезает
+                    c.t = c.t + dt
+                    local a = math.clamp(c.t / 1.3, 0, 1)
+                    p.Transparency = 0.45 + 0.55 * a
+                    c.light.Brightness = 1.6 * (1 - a)
+                    local s = c.size * (1 - 0.25 * a)
+                    p.Size = Vector3.new(s, s, s)
+                    if a >= 1 then place(c, false) end
+                end
                 p.CFrame = CFrame.new(c.pos) * c.rot
-                if height <= 0.6 then place(c, false) end
             end
         end
     end)
-    task.spawn(function() -- следим за количеством
+    task.spawn(function()
         while true do
             task.wait(0.5)
             if cb.on then pcall(sync) end
         end
     end)
-
-    local tCb = addTab("Cubes", ICONS.EYE)
-    tCb.Section("🧊 Cubes")
-    tCb.Toggle("Cubes", false, function(v)
-        cb.on = v
-        if v then sync() else clear() end
-    end, ICONS.EYE)
-    tCb.Slider("Cubes: Количество", 5, 20, 10, "", function(v) cb.n = math.floor(v) end, 1)
-    tCb.Slider("Cubes: Speed", 0.5, 10, 3, "", function(v) cb.speed = v end, 0.05)
-end
+end)
 
 -- ===== CustomFog =====
-do
+safe("CustomFog", function()
     local fg = {on = false, power = 15, sync = true, color = Color3.fromRGB(150, 150, 180), orig = nil}
     local Lt = game:GetService("Lighting")
+    local colorRow
+    local tFg = addTab("CustomFog", ICONS.EYE)
+    tFg.Section("🌫 CustomFog")
     local function apply()
         if not fg.orig then fg.orig = {Lt.FogStart, Lt.FogEnd, Lt.FogColor} end
         Lt.FogStart = 0
         Lt.FogEnd = math.max(25, 1200 - fg.power * 23.5)
         Lt.FogColor = fg.sync and themeCol() or fg.color
     end
-    local function restore()
-        if fg.orig then
-            pcall(function()
-                Lt.FogStart, Lt.FogEnd, Lt.FogColor = fg.orig[1], fg.orig[2], fg.orig[3]
-            end)
+    tFg.Toggle("CustomFog", false, function(v)
+        fg.on = v
+        if v then
+            pcall(apply)
+        elseif fg.orig then
+            pcall(function() Lt.FogStart, Lt.FogEnd, Lt.FogColor = fg.orig[1], fg.orig[2], fg.orig[3] end)
             fg.orig = nil
         end
-    end
-    task.spawn(function() -- игра/карта может сбрасывать туман, поэтому применяем регулярно
+    end, ICONS.EYE)
+    tFg.Slider("CustomFog: Сила", 1, 50, 15, "", function(v) fg.power = math.floor(v) end, 1)
+    tFg.Toggle("CustomFog: синхронизация с темой", true, function(v)
+        fg.sync = v
+        if colorRow then colorRow.Visible = not v end -- цвет появляется, когда синхронизация выключена
+    end, ICONS.EYE)
+    pcall(function()
+        colorRow = tFg.ColorPicker("Поменять цвет тумана", fg.color, function(c)
+            if typeof(c) == "Color3" then fg.color = c end
+        end)
+        if colorRow then colorRow.Visible = false end
+    end)
+    task.spawn(function()
         while true do
             task.wait(0.4)
             if fg.on then pcall(apply) end
         end
     end)
-    local tFg = addTab("CustomFog", ICONS.EYE)
-    tFg.Section("🌫 CustomFog")
-    local colorRow
-    tFg.Toggle("CustomFog", false, function(v)
-        fg.on = v
-        if v then pcall(apply) else restore() end
-    end, ICONS.EYE)
-    tFg.Slider("CustomFog: Сила", 1, 50, 15, "", function(v) fg.power = math.floor(v) end, 1)
-    tFg.Toggle("CustomFog: синхронизация с темой", true, function(v)
-        fg.sync = v
-        if colorRow then colorRow.Visible = not v end -- цвет тумана появляется, когда синхронизация выключена
-    end, ICONS.EYE)
-    colorRow = tFg.ColorPicker("Поменять цвет тумана", fg.color, function(c)
-        if typeof(c) == "Color3" then fg.color = c end
-    end)
-    if colorRow then colorRow.Visible = false end
-end
+end)
 
 -- ===== Particles: кастомные звёзды =====
-do
+safe("Particles", function()
+    local pr = {stars = false, count = 5, sync = true, walk = false, death = false, shoot = false}
+    local tPr = addTab("Particles", ICONS.EYE)
+    tPr.Section("✨ Particles: Stars")
+    tPr.Toggle("Stars", false, function(v) pr.stars = v end, ICONS.EYE)
+    tPr.Slider("Stars: Количество", 1, 10, 5, "", function(v) pr.count = math.floor(v) end, 1)
+    tPr.Toggle("Stars: синхронизация с темой", true, function(v) pr.sync = v end, ICONS.EYE)
+    tPr.Toggle("Stars: при ходьбе", false, function(v) pr.walk = v end, ICONS.EYE)
+    tPr.Toggle("Stars: при смертях", false, function(v) pr.death = v end, ICONS.EYE)
+    tPr.Toggle("Stars: при стрельбе", false, function(v) pr.shoot = v end, ICONS.EYE)
+
     local STAR_B64 = "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"
     local function b64d(s)
         local al = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -12262,10 +12174,7 @@ do
             starTex = getcustomasset("ManewareStar.png")
         end
     end)
-
-    local pr = {stars = false, count = 5, sync = true, walk = false, death = false, shoot = false}
     local function starCol() return pr.sync and themeCol() or Color3.fromRGB(255, 232, 120) end
-
     local function mkEmitter(parent, life, speed, accel)
         local e = Instance.new("ParticleEmitter")
         e.Texture = starTex
@@ -12275,33 +12184,29 @@ do
         e.Lifetime = NumberRange.new(life[1], life[2])
         e.Speed = NumberRange.new(speed[1], speed[2])
         e.SpreadAngle = Vector2.new(180, 180)
-        e.Acceleration = Vector3.new(0, accel, 0) -- звёзды плавно падают
+        e.Acceleration = Vector3.new(0, accel, 0) -- плавно падают
         e.Rotation = NumberRange.new(0, 360)
         e.RotSpeed = NumberRange.new(-70, 70)
-        e.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0, 0), NumberSequenceKeypoint.new(0.15, 1.1, 0.35),
-            NumberSequenceKeypoint.new(1, 0, 0)})
+        e.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.15, 1.1),
+            NumberSequenceKeypoint.new(1, 0)})
         e.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.15, 0.05),
             NumberSequenceKeypoint.new(0.65, 0.25), NumberSequenceKeypoint.new(1, 1)}) -- и испаряются
         e.Color = ColorSequence.new(starCol())
         e.Parent = parent
         return e
     end
-
-    -- ambient: поле звёзд над игроком
     local field = Instance.new("Part")
     field.Name = "MWStarField"
-    field.Anchored = true
-    field.CanCollide = false
-    field.CanQuery = false
+    field.Anchored, field.CanCollide, field.CanQuery = true, false, false
     field.Transparency = 1
     field.Size = Vector3.new(46, 2, 46)
     local ambient = mkEmitter(field, {3.5, 5}, {1, 3}, -3)
-    ambient.Shape = Enum.ParticleEmitterShape.Box
-    ambient.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
-    ambient.EmissionDirection = Enum.NormalId.Bottom
+    pcall(function()
+        ambient.Shape = Enum.ParticleEmitterShape.Box
+        ambient.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+        ambient.EmissionDirection = Enum.NormalId.Bottom
+    end)
     ambient.SpreadAngle = Vector2.new(8, 8)
-
-    -- шаги: эмиттер у ног
     local walkEm
     local function ensureWalk()
         local hrp = myHrp()
@@ -12314,22 +12219,17 @@ do
         walkEm = mkEmitter(at, {1, 1.7}, {2, 5}, -7)
         return walkEm
     end
-
     local function burstAt(pos, n)
         local part = Instance.new("Part")
-        part.Anchored = true
-        part.CanCollide = false
-        part.CanQuery = false
+        part.Anchored, part.CanCollide, part.CanQuery = true, false, false
         part.Transparency = 1
         part.Size = Vector3.new(0.2, 0.2, 0.2)
         part.CFrame = CFrame.new(pos)
         part.Parent = workspace
         local e = mkEmitter(part, {1.6, 2.6}, {6, 16}, -9)
-        e.Color = ColorSequence.new(starCol())
         e:Emit(n)
         game:GetService("Debris"):AddItem(part, 4)
     end
-
     RunService.Heartbeat:Connect(function()
         local hrp = myHrp()
         if pr.stars and hrp then
@@ -12341,8 +12241,7 @@ do
             ambient.Rate = 0
         end
     end)
-
-    task.spawn(function() -- звёзды при ходьбе
+    task.spawn(function()
         while true do
             task.wait(0.12)
             if pr.walk then
@@ -12356,17 +12255,13 @@ do
             end
         end
     end)
-
-    -- звёзды при смерти любого игрока
     local function hookDeath(pl)
         local function onChar(ch)
             local hum = ch:WaitForChild("Humanoid", 5)
             local root = ch:WaitForChild("HumanoidRootPart", 5)
             if not hum or not root then return end
             hum.Died:Connect(function()
-                if pr.death then
-                    pcall(burstAt, root.Position + Vector3.new(0, 1.5, 0), pr.count * 6)
-                end
+                if pr.death then pcall(burstAt, root.Position + Vector3.new(0, 1.5, 0), pr.count * 6) end
             end)
         end
         if pl.Character then task.spawn(onChar, pl.Character) end
@@ -12374,8 +12269,6 @@ do
     end
     for _, pl in ipairs(Players:GetPlayers()) do hookDeath(pl) end
     Players.PlayerAdded:Connect(hookDeath)
-
-    -- звёзды при выстреле / броске (активация оружия)
     local function hookTool(t)
         if not t:IsA("Tool") or t:GetAttribute("MWStarHook") then return end
         t:SetAttribute("MWStarHook", true)
@@ -12390,34 +12283,25 @@ do
         for _, t in ipairs(ch:GetChildren()) do hookTool(t) end
         ch.ChildAdded:Connect(hookTool)
     end
+    if LocalPlayer.Character then hookChar(LocalPlayer.Character) end
+    LocalPlayer.CharacterAdded:Connect(hookChar)
     local function hookBackpack(bp)
         for _, t in ipairs(bp:GetChildren()) do hookTool(t) end
         bp.ChildAdded:Connect(hookTool)
     end
-    if LocalPlayer.Character then hookChar(LocalPlayer.Character) end
-    LocalPlayer.CharacterAdded:Connect(hookChar)
     local bp0 = LocalPlayer:FindFirstChildOfClass("Backpack")
     if bp0 then hookBackpack(bp0) end
     LocalPlayer.ChildAdded:Connect(function(c) if c:IsA("Backpack") then hookBackpack(c) end end)
-
-    local tPr = addTab("Particles", ICONS.EYE)
-    tPr.Section("✨ Particles: Stars")
-    tPr.Toggle("Stars", false, function(v) pr.stars = v end, ICONS.EYE)
-    tPr.Slider("Stars: Количество", 1, 10, 5, "", function(v) pr.count = math.floor(v) end, 1)
-    tPr.Toggle("Stars: синхронизация с темой", true, function(v) pr.sync = v end, ICONS.EYE)
-    tPr.Toggle("Stars: при ходьбе", false, function(v) pr.walk = v end, ICONS.EYE)
-    tPr.Toggle("Stars: при смертях", false, function(v) pr.death = v end, ICONS.EYE)
-    tPr.Toggle("Stars: при стрельбе", false, function(v) pr.shoot = v end, ICONS.EYE)
-end
+end)
 
 -- ===== KillSound: звук при смерти (Totem из Minecraft) =====
-do
+safe("KillSound", function()
     local ks = {on = false, vol = 1, id = nil}
-    local MPS = game:GetService("MarketplaceService")
-    local TOTEM_IDS = {127854195349115}
     local snd = Instance.new("Sound")
     snd.Name = "MWKillSound"
     snd.Parent = game:GetService("SoundService")
+    local MPS = game:GetService("MarketplaceService")
+    local TOTEM_IDS = {127854195349115}
     local function resolve()
         if ks.id then return ks.id end
         for _, id in ipairs(TOTEM_IDS) do
@@ -12432,30 +12316,15 @@ do
                 return ids[i]
             end
         end
-        ks.id = TOTEM_IDS[1] -- не удалось проверить: пробуем известный ID как есть
+        ks.id = TOTEM_IDS[1]
         return ks.id
     end
     local function play()
-        local id = resolve()
-        snd.SoundId = "rbxassetid://" .. tostring(id)
+        snd.SoundId = "rbxassetid://" .. tostring(resolve())
         snd.Volume = ks.vol
         snd.TimePosition = 0
         snd:Play()
     end
-    local function hook(pl)
-        local function onChar(ch)
-            local hum = ch:WaitForChild("Humanoid", 5)
-            if not hum then return end
-            hum.Died:Connect(function()
-                if ks.on then task.spawn(play) end
-            end)
-        end
-        if pl.Character then task.spawn(onChar, pl.Character) end
-        pl.CharacterAdded:Connect(onChar)
-    end
-    for _, pl in ipairs(Players:GetPlayers()) do hook(pl) end
-    Players.PlayerAdded:Connect(hook)
-
     local tKs = addTab("KillSound", ICONS.UTIL)
     tKs.Section("💀 KillSound")
     tKs.Toggle("KillSound", false, function(v)
@@ -12475,7 +12344,543 @@ do
         notify("KillSound: ID " .. id)
     end)
     tKs.Button("▶ Проверить звук", function() task.spawn(play) end)
+    local function hook(pl)
+        local function onChar(ch)
+            local hum = ch:WaitForChild("Humanoid", 5)
+            if not hum then return end
+            hum.Died:Connect(function() if ks.on then task.spawn(play) end end)
+        end
+        if pl.Character then task.spawn(onChar, pl.Character) end
+        pl.CharacterAdded:Connect(onChar)
+    end
+    for _, pl in ipairs(Players:GetPlayers()) do hook(pl) end
+    Players.PlayerAdded:Connect(hook)
+end)
+
+--------------------------------------------------
+-- HITLOG / ВИЗУАЛЫ / SHADER
+--------------------------------------------------
+-- ===== Hitlog =====
+safe("Hitlog", function()
+    local HLS = {
+        {name = "Neverlose (CS2)", prefix = "[neverlose] ", pc = Color3.fromRGB(0, 175, 255), nc = Color3.fromRGB(0, 175, 255), tmpl = "Hit {n} in the {b} for {d} damage ({h} remaining)", font = Enum.Font.GothamMedium},
+        {name = "Skeet (CS)", prefix = "", pc = Color3.fromRGB(159, 202, 43), nc = Color3.fromRGB(159, 202, 43), tmpl = "Hit {n} in the {b} for {d} damage ({h} health remaining)", font = Enum.Font.Code},
+        {name = "Gamesense (CS)", prefix = "[gamesense] ", pc = Color3.fromRGB(159, 202, 43), nc = Color3.fromRGB(159, 202, 43), tmpl = "Hit {n} in the {b} for {d} damage ({h} health remaining)", font = Enum.Font.Code},
+        {name = "Onetap (CS)", prefix = "[onetap] ", pc = Color3.fromRGB(255, 165, 0), nc = Color3.fromRGB(255, 200, 90), tmpl = "Hit {n} in {b} for {d} ({h} hp)", font = Enum.Font.SourceSansBold},
+        {name = "Aimware (CS)", prefix = "[Aimware] ", pc = Color3.fromRGB(230, 60, 60), nc = Color3.fromRGB(255, 120, 120), tmpl = "Hit {n} in the {b} for {d} damage", font = Enum.Font.SourceSansBold},
+        {name = "Fatality (CS)", prefix = "[fatality] ", pc = Color3.fromRGB(255, 50, 120), nc = Color3.fromRGB(255, 120, 170), tmpl = "hit {n} -{d}hp ({h})", font = Enum.Font.GothamMedium},
+        {name = "Nixware (CS)", prefix = "[nixware] ", pc = Color3.fromRGB(150, 120, 255), nc = Color3.fromRGB(190, 170, 255), tmpl = "Hit {n} for {d} in {b}", font = Enum.Font.GothamMedium},
+        {name = "Primordial (CS)", prefix = "[primordial] ", pc = Color3.fromRGB(255, 255, 255), nc = Color3.fromRGB(220, 220, 255), tmpl = "Hit {n} ({b}) -{d}", font = Enum.Font.GothamMedium},
+        {name = "Pandora (CS)", prefix = "[pandora] ", pc = Color3.fromRGB(180, 90, 255), nc = Color3.fromRGB(210, 150, 255), tmpl = "hit {n} in {b} for {d}", font = Enum.Font.GothamMedium},
+        {name = "Evolve (CS)", prefix = "[evolve] ", pc = Color3.fromRGB(60, 220, 110), nc = Color3.fromRGB(130, 240, 160), tmpl = "> {n} -{d} ({b})", font = Enum.Font.GothamMedium},
+        {name = "Legendware (CS)", prefix = "[legendware] ", pc = Color3.fromRGB(255, 100, 200), nc = Color3.fromRGB(255, 160, 225), tmpl = "hit {n} {d} dmg", font = Enum.Font.GothamMedium},
+        {name = "Spirthack (CS)", prefix = "[spirthack] ", pc = Color3.fromRGB(80, 160, 255), nc = Color3.fromRGB(150, 200, 255), tmpl = "hit {n} -{d} [{b}]", font = Enum.Font.Code},
+        {name = "Meteor (MC)", prefix = "[Meteor] ", pc = Color3.fromRGB(145, 61, 226), nc = Color3.fromRGB(200, 160, 255), tmpl = "Hit {n} for {d} damage.", font = Enum.Font.Arcade},
+        {name = "Wurst (MC)", prefix = "[Wurst] ", pc = Color3.fromRGB(255, 170, 0), nc = Color3.fromRGB(255, 210, 120), tmpl = "Dealt {d} damage to {n}", font = Enum.Font.Arcade},
+        {name = "Future (MC)", prefix = "[Future] ", pc = Color3.fromRGB(60, 150, 255), nc = Color3.fromRGB(150, 200, 255), tmpl = "{n} -{d} ({h} hp)", font = Enum.Font.Arcade},
+        {name = "Sigma (MC)", prefix = "Sigma » ", pc = Color3.fromRGB(235, 235, 245), nc = Color3.fromRGB(255, 255, 255), tmpl = "Hit {n} (-{d})", font = Enum.Font.GothamBold},
+        {name = "Novoline (MC)", prefix = "[Novoline] ", pc = Color3.fromRGB(200, 60, 220), nc = Color3.fromRGB(230, 140, 245), tmpl = "Hit {n} -{d}", font = Enum.Font.Arcade},
+        {name = "Vape (MC)", prefix = "Vape » ", pc = Color3.fromRGB(55, 200, 100), nc = Color3.fromRGB(140, 240, 170), tmpl = "Hit {n} for {d}", font = Enum.Font.GothamMedium},
+        {name = "Exhibition (MC)", prefix = "", pc = Color3.fromRGB(255, 150, 0), nc = Color3.fromRGB(255, 150, 0), tmpl = "Hit {n} for {d} damage", font = Enum.Font.Arcade},
+        {name = "LiquidBounce (MC)", prefix = "[LiquidBounce] ", pc = Color3.fromRGB(70, 160, 255), nc = Color3.fromRGB(150, 200, 255), tmpl = "Hit {n} -{d}", font = Enum.Font.GothamMedium},
+        {name = "Synapse X", prefix = "[Synapse] ", pc = Color3.fromRGB(200, 30, 30), nc = Color3.fromRGB(255, 110, 110), tmpl = "hit {n} (-{d})", font = Enum.Font.GothamMedium},
+        {name = "Valorant", prefix = "", pc = Color3.fromRGB(255, 70, 85), nc = Color3.fromRGB(255, 70, 85), tmpl = "HIT  {n}  -{d}", font = Enum.Font.GothamBold},
+        {name = "Rust", prefix = "[RUST] ", pc = Color3.fromRGB(200, 90, 40), nc = Color3.fromRGB(235, 150, 90), tmpl = "You hit {n} in the {b} for {d} damage", font = Enum.Font.SourceSansBold},
+        {name = "CS2 Damage", prefix = "[CS2] ", pc = Color3.fromRGB(255, 180, 40), nc = Color3.fromRGB(255, 210, 120), tmpl = "Damage Given to {n} - {d} in {b}", font = Enum.Font.SourceSansBold},
+        {name = "Fortnite", prefix = "", pc = Color3.fromRGB(140, 90, 255), nc = Color3.fromRGB(190, 150, 255), tmpl = "{n}  -{d}", font = Enum.Font.GothamBold},
+        {name = "Roblox", prefix = "[Hit] ", pc = Color3.fromRGB(120, 120, 150), nc = Color3.fromRGB(235, 235, 245), tmpl = "{n} (-{d}) {h} HP left", font = Enum.Font.GothamMedium},
+    }
+    local hl = {on = false, style = 1, time = 6, lines = 6, y = 120}
+    local names = {}
+    for i, s in ipairs(HLS) do names[i] = s.name end
+    local tHl = addTab("Hitlog", ICONS.TARGET)
+    tHl.Section("🎯 Hitlog (лог попаданий)")
+    tHl.Toggle("Hitlog", false, function(v) hl.on = v end, ICONS.TARGET)
+    tHl.Slider("Hitlog: Время (сек)", 2, 15, 6, "", function(v) hl.time = v end, 1)
+    tHl.Slider("Hitlog: Строк", 3, 12, 6, "", function(v) hl.lines = math.floor(v) end, 1)
+    tHl.Slider("Hitlog: Позиция Y", 0, 500, 120, "", function(v)
+        hl.y = v
+        if hl.box then hl.box.Position = UDim2.new(0, 10, 0, v) end
+    end, 5)
+    tHl.Section("Стиль (читы разных игр)")
+    radioGroup(tHl, "Hitlog: ", names, 1, function(i) hl.style = i end, ICONS.TARGET)
+
+    local gui = makeGui("ManewareHitlog", 99991)
+    hl.box = new("Frame", {Position = UDim2.new(0, 10, 0, hl.y), Size = UDim2.new(0, 10, 0, 10), BackgroundTransparency = 1,
+        AutomaticSize = Enum.AutomaticSize.XY}, gui)
+    new("UIListLayout", {Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder}, hl.box)
+    local order = 0
+    local function hex(c)
+        return string.format("#%02x%02x%02x", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+    end
+    local function addLog(name, dmg, hp, box)
+        if not hl.on then return end
+        local S = HLS[hl.style] or HLS[1]
+        order = order + 1
+        local txt = S.tmpl
+        local nameTxt = '<font color="' .. hex(S.nc) .. '">' .. tostring(name):gsub("[<>&]", "") .. "</font>"
+        txt = txt:gsub("{n}", function() return nameTxt end)
+        txt = txt:gsub("{d}", function() return tostring(dmg) end)
+        txt = txt:gsub("{h}", function() return tostring(hp) end)
+        txt = txt:gsub("{b}", function() return box end)
+        local line = new("Frame", {AutomaticSize = Enum.AutomaticSize.XY, BackgroundColor3 = Color3.new(0, 0, 0),
+            BackgroundTransparency = 0.35, BorderSizePixel = 0, LayoutOrder = order}, hl.box)
+        new("UIPadding", {PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6), PaddingTop = UDim.new(0, 2),
+            PaddingBottom = UDim.new(0, 2)}, line)
+        local lb = new("TextLabel", {AutomaticSize = Enum.AutomaticSize.XY, BackgroundTransparency = 1, RichText = true,
+            Text = (S.prefix ~= "" and ('<font color="' .. hex(S.pc) .. '">' .. S.prefix .. "</font>") or "") .. txt,
+            TextColor3 = Color3.new(1, 1, 1), TextSize = 14, Font = S.font, TextXAlignment = Enum.TextXAlignment.Left,
+            TextStrokeTransparency = 0.6}, line)
+        local kids = {}
+        for _, c in ipairs(hl.box:GetChildren()) do if c:IsA("Frame") then kids[#kids + 1] = c end end
+        table.sort(kids, function(a, b) return a.LayoutOrder < b.LayoutOrder end)
+        while #kids > hl.lines do table.remove(kids, 1):Destroy() end
+        task.delay(hl.time, function()
+            if not line.Parent then return end
+            TweenService:Create(line, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
+            TweenService:Create(lb, TweenInfo.new(0.4), {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
+            task.wait(0.45)
+            line:Destroy()
+        end)
+    end
+
+    -- попадание = у игрока упало здоровье вскоре после твоего выстрела/удара
+    local lastAtk, lastTarget = -10, nil
+    local function onAttack()
+        lastAtk = os.clock()
+        pcall(function() lastTarget = LocalPlayer:GetMouse().Target end)
+    end
+    local function hookTool(t)
+        if not t:IsA("Tool") or t:GetAttribute("MWHitHook") then return end
+        t:SetAttribute("MWHitHook", true)
+        t.Activated:Connect(onAttack)
+    end
+    local function hookChar(ch)
+        for _, t in ipairs(ch:GetChildren()) do hookTool(t) end
+        ch.ChildAdded:Connect(hookTool)
+    end
+    if LocalPlayer.Character then hookChar(LocalPlayer.Character) end
+    LocalPlayer.CharacterAdded:Connect(hookChar)
+    local function boxOf(ch)
+        local t = lastTarget
+        if t and t:IsDescendantOf(ch) then
+            local n = t.Name
+            if n == "Head" then return "head" end
+            if n:find("Torso") or n == "HumanoidRootPart" then return "chest" end
+            if n:find("Arm") or n:find("Hand") then return "arm" end
+            if n:find("Leg") or n:find("Foot") then return "leg" end
+        end
+        return "body"
+    end
+    local prev = {}
+    local function hookPlayer(pl)
+        if pl == LocalPlayer then return end
+        local function onChar(ch)
+            local hum = ch:WaitForChild("Humanoid", 5)
+            if not hum then return end
+            prev[hum] = hum.Health
+            hum.HealthChanged:Connect(function(h)
+                local old = prev[hum] or h
+                prev[hum] = h
+                local dmg = old - h
+                if dmg > 0.5 and os.clock() - lastAtk < 2 then
+                    addLog(pl.DisplayName, math.floor(dmg + 0.5), math.max(0, math.floor(h + 0.5)), boxOf(ch))
+                end
+            end)
+        end
+        if pl.Character then task.spawn(onChar, pl.Character) end
+        pl.CharacterAdded:Connect(onChar)
+    end
+    for _, pl in ipairs(Players:GetPlayers()) do hookPlayer(pl) end
+    Players.PlayerAdded:Connect(hookPlayer)
+    tHl.Button("▶ Тест лога", function() addLog("TestPlayer", 100, 0, "head") end)
+end)
+
+-- ===== общие помощники для визуалов =====
+local function visColor(sync, rainbow, off)
+    if rainbow then return rainbowCol(off) end
+    if sync then return themeCol() end
+    return Color3.fromRGB(200, 120, 255)
 end
+local function charParts(names)
+    local c, out = myChar(), {}
+    if not c then return out end
+    for _, n in ipairs(names) do
+        local p = c:FindFirstChild(n)
+        if p and p:IsA("BasePart") then out[#out + 1] = p end
+    end
+    return out
+end
+
+-- ===== HandShader =====
+safe("HandShader", function()
+    local hs = {on = false, mat = 1, trans = 0.3, sync = true, rainbow = false, tool = true, saved = {}}
+    local MATS = {"ForceField", "Neon", "Glass", "Plastic", "Metal"}
+    local ARMS = {"LeftHand", "RightHand", "LeftLowerArm", "RightLowerArm", "LeftUpperArm", "RightUpperArm", "Left Arm", "Right Arm"}
+    local tab = addTab("HandShader", ICONS.EYE)
+    tab.Section("🖐 HandShader")
+    tab.Toggle("HandShader", false, function(v)
+        hs.on = v
+        if not v then
+            for p, o in pairs(hs.saved) do
+                pcall(function() p.Material, p.Color, p.Transparency = o[1], o[2], o[3] end)
+            end
+            hs.saved = {}
+        end
+    end, ICONS.EYE)
+    tab.Slider("HandShader: Прозрачность", 0, 90, 30, "%", function(v) hs.trans = v / 100 end, 1)
+    tab.Toggle("HandShader: синхронизация с темой", true, function(v) hs.sync = v end, ICONS.EYE)
+    tab.Toggle("HandShader: радуга", false, function(v) hs.rainbow = v end, ICONS.EYE)
+    tab.Toggle("HandShader: и оружие в руке", true, function(v) hs.tool = v end, ICONS.EYE)
+    tab.Section("Материал")
+    radioGroup(tab, "HandShader: ", MATS, 1, function(i) hs.mat = i end, ICONS.EYE)
+    local function paint(p, col)
+        if not hs.saved[p] then hs.saved[p] = {p.Material, p.Color, p.Transparency} end
+        p.Material = Enum.Material[MATS[hs.mat]]
+        p.Color = col
+        p.Transparency = hs.trans
+    end
+    task.spawn(function()
+        while true do
+            task.wait(0.12)
+            if hs.on then
+                pcall(function()
+                    local col = visColor(hs.sync, hs.rainbow)
+                    for _, p in ipairs(charParts(ARMS)) do paint(p, col) end
+                    if hs.tool then
+                        local c = myChar()
+                        for _, t in ipairs(c and c:GetChildren() or {}) do
+                            if t:IsA("Tool") then
+                                for _, d in ipairs(t:GetDescendants()) do
+                                    if d:IsA("BasePart") and d.Transparency < 0.95 then paint(d, col) end
+                                end
+                            end
+                        end
+                    end
+                end)
+            end
+        end
+    end)
+end)
+
+-- ===== SelfChams (подсветка своего персонажа) =====
+safe("SelfChams", function()
+    local sc = {on = false, fill = 0.55, sync = true, rainbow = false, hl = nil}
+    local tab = addTab("SelfChams", ICONS.EYE)
+    tab.Section("✨ SelfChams")
+    tab.Toggle("SelfChams", false, function(v)
+        sc.on = v
+        if not v and sc.hl then sc.hl:Destroy() sc.hl = nil end
+    end, ICONS.EYE)
+    tab.Slider("SelfChams: Заливка", 0, 100, 55, "%", function(v) sc.fill = v / 100 end, 1)
+    tab.Toggle("SelfChams: синхронизация с темой", true, function(v) sc.sync = v end, ICONS.EYE)
+    tab.Toggle("SelfChams: радуга", false, function(v) sc.rainbow = v end, ICONS.EYE)
+    task.spawn(function()
+        while true do
+            task.wait(0.1)
+            if sc.on then
+                pcall(function()
+                    local ch = myChar()
+                    if not ch then return end
+                    if not sc.hl or sc.hl.Parent ~= ch then
+                        if sc.hl then sc.hl:Destroy() end
+                        sc.hl = Instance.new("Highlight")
+                        sc.hl.Name = "MWSelfChams"
+                        sc.hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+                        sc.hl.Parent = ch
+                    end
+                    local col = visColor(sc.sync, sc.rainbow)
+                    sc.hl.FillColor, sc.hl.OutlineColor = col, col
+                    sc.hl.FillTransparency, sc.hl.OutlineTransparency = sc.fill, 0
+                end)
+            end
+        end
+    end)
+end)
+
+-- ===== Trails =====
+safe("Trails", function()
+    local tr = {on = false, life = 1, sync = true, rainbow = false, obj = nil, root = nil}
+    local tab = addTab("Trails", ICONS.EYE)
+    tab.Section("🌈 Trails")
+    tab.Toggle("Trails", false, function(v)
+        tr.on = v
+        if not v and tr.obj then
+            tr.obj:Destroy()
+            tr.obj = nil
+        end
+    end, ICONS.EYE)
+    tab.Slider("Trails: Длина", 0.2, 3, 1, "", function(v) tr.life = v end, 0.1)
+    tab.Toggle("Trails: синхронизация с темой", true, function(v) tr.sync = v end, ICONS.EYE)
+    tab.Toggle("Trails: радуга", false, function(v) tr.rainbow = v end, ICONS.EYE)
+    task.spawn(function()
+        while true do
+            task.wait(0.1)
+            if tr.on then
+                pcall(function()
+                    local hrp = myHrp()
+                    if not hrp then return end
+                    if not tr.obj or tr.root ~= hrp or not tr.obj.Parent then
+                        if tr.obj then tr.obj:Destroy() end
+                        local a0 = Instance.new("Attachment")
+                        a0.Position = Vector3.new(0, 0.9, 0)
+                        a0.Name = "MWTrailA0"
+                        a0.Parent = hrp
+                        local a1 = Instance.new("Attachment")
+                        a1.Position = Vector3.new(0, -0.9, 0)
+                        a1.Name = "MWTrailA1"
+                        a1.Parent = hrp
+                        local t = Instance.new("Trail")
+                        t.Name = "MWTrail"
+                        t.Attachment0, t.Attachment1 = a0, a1
+                        t.LightEmission = 1
+                        t.Transparency = NumberSequence.new(0.1, 1)
+                        t.Parent = hrp
+                        tr.obj, tr.root = t, hrp
+                    end
+                    tr.obj.Lifetime = tr.life
+                    if tr.rainbow then
+                        tr.obj.Color = ColorSequence.new({ColorSequenceKeypoint.new(0, rainbowCol(0)),
+                            ColorSequenceKeypoint.new(0.5, rainbowCol(0.3)), ColorSequenceKeypoint.new(1, rainbowCol(0.6))})
+                    else
+                        tr.obj.Color = ColorSequence.new(visColor(tr.sync, false))
+                    end
+                end)
+            end
+        end
+    end)
+end)
+
+-- ===== ChinaHat и Halo (диски над головой) =====
+safe("ChinaHat", function()
+    local ch = {on = false, size = 1, sync = true, rainbow = false, parts = {}, head = nil}
+    local tab = addTab("ChinaHat", ICONS.EYE)
+    tab.Section("🎩 ChinaHat")
+    local function clear()
+        for _, p in ipairs(ch.parts) do p:Destroy() end
+        ch.parts, ch.head = {}, nil
+    end
+    tab.Toggle("ChinaHat", false, function(v)
+        ch.on = v
+        if not v then clear() end
+    end, ICONS.EYE)
+    tab.Slider("ChinaHat: Размер", 0.5, 2.5, 1, "", function(v)
+        ch.size = v
+        clear()
+    end, 0.1)
+    tab.Toggle("ChinaHat: синхронизация с темой", true, function(v) ch.sync = v end, ICONS.EYE)
+    tab.Toggle("ChinaHat: радуга", false, function(v) ch.rainbow = v end, ICONS.EYE)
+    local function build(head)
+        clear()
+        ch.head = head
+        local layers = 7
+        for i = 1, layers do
+            local d = Instance.new("Part")
+            d.Name = "MWHat"
+            d.Shape = Enum.PartType.Cylinder
+            d.Material = Enum.Material.Neon
+            d.Transparency = 0.25
+            d.CanCollide, d.CanQuery, d.CanTouch, d.Massless, d.CastShadow = false, false, false, true, false
+            local r = (1.9 - (i - 1) * 0.27) * ch.size
+            d.Size = Vector3.new(0.14 * ch.size, r * 2, r * 2)
+            d.Parent = head
+            local w = Instance.new("Weld")
+            w.Part0, w.Part1 = head, d
+            w.C0 = CFrame.new(0, (0.55 + (i - 1) * 0.13) * ch.size, 0) * CFrame.Angles(0, 0, math.rad(90))
+            w.Parent = d
+            ch.parts[#ch.parts + 1] = d
+        end
+    end
+    task.spawn(function()
+        while true do
+            task.wait(0.1)
+            if ch.on then
+                pcall(function()
+                    local head = myChar() and myChar():FindFirstChild("Head")
+                    if not head then return end
+                    if ch.head ~= head or #ch.parts == 0 or not ch.parts[1].Parent then build(head) end
+                    for i, p in ipairs(ch.parts) do p.Color = visColor(ch.sync, ch.rainbow, i * 0.03) end
+                end)
+            end
+        end
+    end)
+end)
+
+safe("Halo", function()
+    local hs = {on = false, size = 1, sync = true, rainbow = false, part = nil}
+    local tab = addTab("Halo", ICONS.EYE)
+    tab.Section("😇 Halo")
+    tab.Toggle("Halo", false, function(v)
+        hs.on = v
+        if not v and hs.part then hs.part:Destroy() hs.part = nil end
+    end, ICONS.EYE)
+    tab.Slider("Halo: Размер", 0.5, 2.5, 1, "", function(v) hs.size = v end, 0.1)
+    tab.Toggle("Halo: синхронизация с темой", true, function(v) hs.sync = v end, ICONS.EYE)
+    tab.Toggle("Halo: радуга", false, function(v) hs.rainbow = v end, ICONS.EYE)
+    task.spawn(function()
+        local ang = 0
+        while true do
+            task.wait(0.03)
+            if hs.on then
+                pcall(function()
+                    local head = myChar() and myChar():FindFirstChild("Head")
+                    if not head then return end
+                    if not hs.part or not hs.part.Parent then
+                        local p = Instance.new("Part")
+                        p.Name = "MWHalo"
+                        p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
+                        p.Shape = Enum.PartType.Cylinder
+                        p.Material = Enum.Material.Neon
+                        p.Transparency = 0.35
+                        p.Parent = workspace
+                        hs.part = p
+                    end
+                    ang = ang + 0.05
+                    local r = 2.2 * hs.size
+                    hs.part.Size = Vector3.new(0.12, r, r)
+                    hs.part.Color = visColor(hs.sync, hs.rainbow)
+                    hs.part.CFrame = CFrame.new(head.Position + Vector3.new(0, 1.5 + math.sin(ang) * 0.1, 0)) * CFrame.Angles(0, ang, math.rad(90))
+                end)
+            end
+        end
+    end)
+end)
+
+-- ===== Orbit (шары вокруг игрока) =====
+safe("Orbit", function()
+    local ob = {on = false, n = 5, radius = 5, speed = 2, sync = true, rainbow = false, list = {}, folder = nil}
+    local tab = addTab("Orbit", ICONS.EYE)
+    tab.Section("🪐 Orbit")
+    tab.Toggle("Orbit", false, function(v)
+        ob.on = v
+        if not v and ob.folder then ob.folder:Destroy() ob.folder, ob.list = nil, {} end
+    end, ICONS.EYE)
+    tab.Slider("Orbit: Количество", 1, 12, 5, "", function(v) ob.n = math.floor(v) end, 1)
+    tab.Slider("Orbit: Радиус", 3, 12, 5, "", function(v) ob.radius = v end, 0.5)
+    tab.Slider("Orbit: Скорость", 0.5, 8, 2, "", function(v) ob.speed = v end, 0.1)
+    tab.Toggle("Orbit: синхронизация с темой", true, function(v) ob.sync = v end, ICONS.EYE)
+    tab.Toggle("Orbit: радуга", false, function(v) ob.rainbow = v end, ICONS.EYE)
+    RunService.Heartbeat:Connect(function()
+        if not ob.on then return end
+        local hrp = myHrp()
+        if not hrp then return end
+        if not ob.folder or not ob.folder.Parent then
+            ob.folder = Instance.new("Folder")
+            ob.folder.Name = "MWOrbit"
+            ob.folder.Parent = workspace
+            ob.list = {}
+        end
+        while #ob.list < ob.n do
+            local p = Instance.new("Part")
+            p.Shape = Enum.PartType.Ball
+            p.Size = Vector3.new(0.6, 0.6, 0.6)
+            p.Material = Enum.Material.Neon
+            p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
+            p.Transparency = 0.2
+            p.Parent = ob.folder
+            ob.list[#ob.list + 1] = p
+        end
+        while #ob.list > ob.n do table.remove(ob.list):Destroy() end
+        local t = os.clock() * ob.speed
+        for i, p in ipairs(ob.list) do
+            local a = t + (i / #ob.list) * math.pi * 2
+            p.Position = hrp.Position + Vector3.new(math.cos(a) * ob.radius, math.sin(t * 1.3 + i) * 1.2, math.sin(a) * ob.radius)
+            p.Color = visColor(ob.sync, ob.rainbow, i * 0.06)
+        end
+    end)
+end)
+
+-- ===== WorldTime / Ambient =====
+safe("WorldTime", function()
+    local wt = {on = false, time = 14, bright = 2, amb = false, orig = nil}
+    local Lt = game:GetService("Lighting")
+    local tab = addTab("WorldTime", ICONS.EYE)
+    tab.Section("🌗 WorldTime")
+    tab.Toggle("WorldTime", false, function(v)
+        wt.on = v
+        if not v and wt.orig then
+            pcall(function()
+                Lt.ClockTime, Lt.Brightness, Lt.Ambient, Lt.OutdoorAmbient = wt.orig[1], wt.orig[2], wt.orig[3], wt.orig[4]
+            end)
+            wt.orig = nil
+        end
+    end, ICONS.EYE)
+    tab.Slider("WorldTime: Время суток", 0, 24, 14, "", function(v) wt.time = v end, 0.1)
+    tab.Slider("WorldTime: Яркость", 0, 5, 2, "", function(v) wt.bright = v end, 0.1)
+    tab.Toggle("WorldTime: Ambient цветом темы", false, function(v) wt.amb = v end, ICONS.EYE)
+    task.spawn(function()
+        while true do
+            task.wait(0.3)
+            if wt.on then
+                pcall(function()
+                    if not wt.orig then wt.orig = {Lt.ClockTime, Lt.Brightness, Lt.Ambient, Lt.OutdoorAmbient} end
+                    Lt.ClockTime = wt.time
+                    Lt.Brightness = wt.bright
+                    if wt.amb then
+                        local c = themeCol()
+                        Lt.Ambient, Lt.OutdoorAmbient = c, c
+                    end
+                end)
+            end
+        end
+    end)
+end)
+
+-- ===== Shader (в Утилитах): пост-эффекты Lighting =====
+safe("Shader", function()
+    local sh = {on = false, preset = 1, power = 70}
+    local Lt = game:GetService("Lighting")
+    local PR = {
+        {"Cinematic", bl = {0.6, 24, 1.0}, cc = {0.02, 0.18, -0.05, Color3.fromRGB(255, 240, 225)}, ray = 0.08, dof = 0.25},
+        {"Vibrant", bl = {0.5, 24, 1.1}, cc = {0.03, 0.10, 0.35, Color3.fromRGB(255, 255, 255)}, ray = 0.10, dof = 0},
+        {"Dark Moody", bl = {0.4, 20, 1.2}, cc = {-0.08, 0.25, -0.20, Color3.fromRGB(200, 210, 255)}, ray = 0.03, dof = 0.2},
+        {"Retro Warm", bl = {0.3, 18, 1.2}, cc = {0.04, 0.12, -0.15, Color3.fromRGB(255, 225, 190)}, ray = 0.05, dof = 0},
+        {"Neon Night", bl = {1.2, 30, 0.8}, cc = {-0.03, 0.20, 0.50, Color3.fromRGB(220, 200, 255)}, ray = 0.02, dof = 0.1},
+        {"Black & White", bl = {0.2, 20, 1.2}, cc = {0, 0.20, -1.0, Color3.fromRGB(255, 255, 255)}, ray = 0, dof = 0},
+        {"Sunny", bl = {0.5, 24, 1.0}, cc = {0.05, 0.10, 0.20, Color3.fromRGB(255, 245, 215)}, ray = 0.25, dof = 0},
+        {"Frozen", bl = {0.4, 22, 1.0}, cc = {0.02, 0.10, -0.10, Color3.fromRGB(190, 225, 255)}, ray = 0.05, dof = 0.1},
+    }
+    local function get(class, name)
+        local e = Lt:FindFirstChild(name)
+        if not e then
+            e = Instance.new(class)
+            e.Name = name
+            e.Parent = Lt
+        end
+        return e
+    end
+    local function apply()
+        local p, k = PR[sh.preset], sh.power / 100
+        local bl, cc = get("BloomEffect", "MWShaderBloom"), get("ColorCorrectionEffect", "MWShaderCC")
+        local ray, dof = get("SunRaysEffect", "MWShaderRays"), get("DepthOfFieldEffect", "MWShaderDof")
+        bl.Intensity, bl.Size, bl.Threshold = p.bl[1] * k, p.bl[2], p.bl[3]
+        cc.Brightness, cc.Contrast, cc.Saturation = p.cc[1] * k, p.cc[2] * k, p.cc[3] * k
+        cc.TintColor = Color3.new(1, 1, 1):Lerp(p.cc[4], k)
+        ray.Intensity, ray.Spread = p.ray * k, 0.6
+        dof.FarIntensity, dof.FocusDistance, dof.InFocusRadius, dof.NearIntensity = p.dof * k, 60, 45, 0
+    end
+    local function clear()
+        for _, n in ipairs({"MWShaderBloom", "MWShaderCC", "MWShaderRays", "MWShaderDof"}) do
+            local e = Lt:FindFirstChild(n)
+            if e then e:Destroy() end
+        end
+    end
+    t5.Section("🎞 Shader")
+    t5.Toggle("Shader", false, function(v)
+        sh.on = v
+        if v then pcall(apply) else clear() end
+    end, ICONS.EYE)
+    t5.Slider("Shader: Интенсивность", 0, 100, 70, "%", function(v)
+        sh.power = v
+        if sh.on then pcall(apply) end
+    end, 1)
+    local labels = {}
+    for i, p in ipairs(PR) do labels[i] = p[1] end
+    radioGroup(t5, "Shader: ", labels, 1, function(i)
+        sh.preset = i
+        if sh.on then pcall(apply) end
+    end, ICONS.EYE)
+end)
 local t9 = addTab("Configs", ICONS.UTIL)
 t9.Section("💾 Конфиги (сохранение настроек)")
 local cfgName = t9.TextBox("Имя конфига")
@@ -13493,6 +13898,174 @@ local THEMES = {
         el = {Color3.fromRGB(18, 40, 10), Color3.fromRGB(38, 80, 18)},
         acc = {Color3.fromRGB(120, 255, 40), Color3.fromRGB(60, 200, 20)},
         card = Color3.fromRGB(14, 32, 8)},
+    {name = "neverlose",
+        bg = {Color3.fromRGB(0, 21, 30), Color3.fromRGB(18, 33, 76)},
+        side = {Color3.fromRGB(0, 26, 38), Color3.fromRGB(20, 37, 86)},
+        top = {Color3.fromRGB(0, 38, 56), Color3.fromRGB(27, 50, 117)},
+        el = {Color3.fromRGB(0, 42, 61), Color3.fromRGB(22, 41, 96)},
+        acc = {Color3.fromRGB(0, 175, 255), Color3.fromRGB(60, 110, 255)},
+        card = Color3.fromRGB(0, 29, 43)},
+    {name = "gamesense",
+        bg = {Color3.fromRGB(19, 24, 5), Color3.fromRGB(21, 45, 18)},
+        side = {Color3.fromRGB(23, 30, 6), Color3.fromRGB(23, 51, 20)},
+        top = {Color3.fromRGB(34, 44, 9), Color3.fromRGB(32, 69, 27)},
+        el = {Color3.fromRGB(38, 48, 10), Color3.fromRGB(26, 57, 22)},
+        acc = {Color3.fromRGB(159, 202, 43), Color3.fromRGB(70, 150, 60)},
+        card = Color3.fromRGB(27, 34, 7)},
+    {name = "skeet",
+        bg = {Color3.fromRGB(14, 25, 30), Color3.fromRGB(60, 27, 72)},
+        side = {Color3.fromRGB(18, 31, 38), Color3.fromRGB(68, 30, 81)},
+        top = {Color3.fromRGB(26, 46, 56), Color3.fromRGB(92, 41, 110)},
+        el = {Color3.fromRGB(28, 50, 61), Color3.fromRGB(76, 34, 91)},
+        acc = {Color3.fromRGB(120, 210, 255), Color3.fromRGB(200, 90, 240)},
+        card = Color3.fromRGB(20, 35, 43)},
+    {name = "onetap",
+        bg = {Color3.fromRGB(30, 20, 4), Color3.fromRGB(69, 27, 12)},
+        side = {Color3.fromRGB(38, 25, 6), Color3.fromRGB(78, 30, 13)},
+        top = {Color3.fromRGB(56, 37, 8), Color3.fromRGB(105, 41, 18)},
+        el = {Color3.fromRGB(61, 40, 9), Color3.fromRGB(87, 34, 15)},
+        acc = {Color3.fromRGB(255, 170, 40), Color3.fromRGB(230, 90, 40)},
+        card = Color3.fromRGB(43, 28, 6)},
+    {name = "fatality",
+        bg = {Color3.fromRGB(30, 7, 15), Color3.fromRGB(48, 12, 60)},
+        side = {Color3.fromRGB(38, 9, 19), Color3.fromRGB(54, 13, 68)},
+        top = {Color3.fromRGB(56, 13, 28), Color3.fromRGB(73, 18, 92)},
+        el = {Color3.fromRGB(61, 14, 31), Color3.fromRGB(60, 15, 76)},
+        acc = {Color3.fromRGB(255, 60, 130), Color3.fromRGB(160, 40, 200)},
+        card = Color3.fromRGB(43, 10, 22)},
+    {name = "aimware",
+        bg = {Color3.fromRGB(28, 8, 8), Color3.fromRGB(45, 12, 18)},
+        side = {Color3.fromRGB(35, 10, 10), Color3.fromRGB(51, 13, 20)},
+        top = {Color3.fromRGB(51, 15, 15), Color3.fromRGB(69, 18, 27)},
+        el = {Color3.fromRGB(56, 16, 16), Color3.fromRGB(57, 15, 22)},
+        acc = {Color3.fromRGB(235, 70, 70), Color3.fromRGB(150, 40, 60)},
+        card = Color3.fromRGB(39, 11, 11)},
+    {name = "nixware",
+        bg = {Color3.fromRGB(13, 15, 30), Color3.fromRGB(54, 24, 76)},
+        side = {Color3.fromRGB(16, 19, 38), Color3.fromRGB(61, 27, 86)},
+        top = {Color3.fromRGB(24, 28, 56), Color3.fromRGB(82, 36, 117)},
+        el = {Color3.fromRGB(26, 31, 61), Color3.fromRGB(68, 30, 96)},
+        acc = {Color3.fromRGB(110, 130, 255), Color3.fromRGB(180, 80, 255)},
+        card = Color3.fromRGB(18, 22, 43)},
+    {name = "midnight",
+        bg = {Color3.fromRGB(10, 13, 24), Color3.fromRGB(15, 18, 42)},
+        side = {Color3.fromRGB(13, 16, 30), Color3.fromRGB(17, 20, 47)},
+        top = {Color3.fromRGB(19, 24, 44), Color3.fromRGB(23, 27, 64)},
+        el = {Color3.fromRGB(21, 26, 48), Color3.fromRGB(19, 22, 53)},
+        acc = {Color3.fromRGB(90, 110, 200), Color3.fromRGB(50, 60, 140)},
+        card = Color3.fromRGB(15, 18, 34)},
+    {name = "galaxy",
+        bg = {Color3.fromRGB(18, 10, 30), Color3.fromRGB(18, 36, 76)},
+        side = {Color3.fromRGB(22, 13, 38), Color3.fromRGB(20, 40, 86)},
+        top = {Color3.fromRGB(33, 19, 56), Color3.fromRGB(27, 55, 117)},
+        el = {Color3.fromRGB(36, 21, 61), Color3.fromRGB(22, 45, 96)},
+        acc = {Color3.fromRGB(150, 90, 255), Color3.fromRGB(60, 120, 255)},
+        card = Color3.fromRGB(25, 15, 43)},
+    {name = "lava",
+        bg = {Color3.fromRGB(30, 13, 3), Color3.fromRGB(66, 12, 9)},
+        side = {Color3.fromRGB(38, 16, 4), Color3.fromRGB(74, 13, 10)},
+        top = {Color3.fromRGB(56, 24, 6), Color3.fromRGB(101, 18, 13)},
+        el = {Color3.fromRGB(61, 26, 7), Color3.fromRGB(83, 15, 11)},
+        acc = {Color3.fromRGB(255, 110, 30), Color3.fromRGB(220, 40, 30)},
+        card = Color3.fromRGB(43, 18, 5)},
+    {name = "forest",
+        bg = {Color3.fromRGB(9, 24, 13), Color3.fromRGB(9, 39, 24)},
+        side = {Color3.fromRGB(12, 30, 16), Color3.fromRGB(10, 44, 27)},
+        top = {Color3.fromRGB(17, 44, 24), Color3.fromRGB(13, 59, 36)},
+        el = {Color3.fromRGB(19, 48, 26), Color3.fromRGB(11, 49, 30)},
+        acc = {Color3.fromRGB(80, 200, 110), Color3.fromRGB(30, 130, 80)},
+        card = Color3.fromRGB(13, 34, 18)},
+    {name = "amethyst",
+        bg = {Color3.fromRGB(22, 13, 30), Color3.fromRGB(36, 21, 60)},
+        side = {Color3.fromRGB(28, 16, 38), Color3.fromRGB(40, 23, 68)},
+        top = {Color3.fromRGB(41, 24, 56), Color3.fromRGB(55, 32, 92)},
+        el = {Color3.fromRGB(45, 26, 61), Color3.fromRGB(45, 26, 76)},
+        acc = {Color3.fromRGB(190, 110, 255), Color3.fromRGB(120, 70, 200)},
+        card = Color3.fromRGB(32, 18, 43)},
+    {name = "cherry",
+        bg = {Color3.fromRGB(30, 8, 12), Color3.fromRGB(54, 9, 21)},
+        side = {Color3.fromRGB(38, 10, 15), Color3.fromRGB(61, 10, 23)},
+        top = {Color3.fromRGB(56, 15, 22), Color3.fromRGB(82, 13, 32)},
+        el = {Color3.fromRGB(61, 16, 24), Color3.fromRGB(68, 11, 26)},
+        acc = {Color3.fromRGB(255, 70, 100), Color3.fromRGB(180, 30, 70)},
+        card = Color3.fromRGB(43, 11, 17)},
+    {name = "sakura",
+        bg = {Color3.fromRGB(30, 19, 24), Color3.fromRGB(66, 30, 48)},
+        side = {Color3.fromRGB(38, 24, 30), Color3.fromRGB(74, 34, 54)},
+        top = {Color3.fromRGB(56, 35, 44), Color3.fromRGB(101, 46, 73)},
+        el = {Color3.fromRGB(61, 38, 48), Color3.fromRGB(83, 38, 60)},
+        acc = {Color3.fromRGB(255, 160, 200), Color3.fromRGB(220, 100, 160)},
+        card = Color3.fromRGB(43, 27, 34)},
+    {name = "cyber",
+        bg = {Color3.fromRGB(0, 30, 27), Color3.fromRGB(76, 0, 57)},
+        side = {Color3.fromRGB(0, 38, 34), Color3.fromRGB(86, 0, 64)},
+        top = {Color3.fromRGB(0, 56, 50), Color3.fromRGB(117, 0, 87)},
+        el = {Color3.fromRGB(0, 61, 55), Color3.fromRGB(96, 0, 72)},
+        acc = {Color3.fromRGB(0, 255, 230), Color3.fromRGB(255, 0, 190)},
+        card = Color3.fromRGB(0, 43, 39)},
+    {name = "vaporwave",
+        bg = {Color3.fromRGB(30, 13, 26), Color3.fromRGB(30, 63, 76)},
+        side = {Color3.fromRGB(38, 16, 33), Color3.fromRGB(34, 71, 86)},
+        top = {Color3.fromRGB(56, 24, 48), Color3.fromRGB(46, 96, 117)},
+        el = {Color3.fromRGB(61, 26, 52), Color3.fromRGB(38, 79, 96)},
+        acc = {Color3.fromRGB(255, 110, 220), Color3.fromRGB(100, 210, 255)},
+        card = Color3.fromRGB(43, 18, 37)},
+    {name = "matrix",
+        bg = {Color3.fromRGB(4, 30, 12), Color3.fromRGB(3, 42, 15)},
+        side = {Color3.fromRGB(6, 38, 15), Color3.fromRGB(3, 47, 17)},
+        top = {Color3.fromRGB(8, 56, 22), Color3.fromRGB(4, 64, 23)},
+        el = {Color3.fromRGB(9, 61, 24), Color3.fromRGB(3, 53, 19)},
+        acc = {Color3.fromRGB(40, 255, 100), Color3.fromRGB(10, 140, 50)},
+        card = Color3.fromRGB(6, 43, 17)},
+    {name = "ember",
+        bg = {Color3.fromRGB(30, 18, 7), Color3.fromRGB(54, 18, 9)},
+        side = {Color3.fromRGB(38, 22, 9), Color3.fromRGB(61, 20, 10)},
+        top = {Color3.fromRGB(56, 33, 13), Color3.fromRGB(82, 27, 13)},
+        el = {Color3.fromRGB(61, 36, 14), Color3.fromRGB(68, 22, 11)},
+        acc = {Color3.fromRGB(255, 150, 60), Color3.fromRGB(180, 60, 30)},
+        card = Color3.fromRGB(43, 25, 10)},
+    {name = "arctic",
+        bg = {Color3.fromRGB(18, 27, 30), Color3.fromRGB(24, 48, 69)},
+        side = {Color3.fromRGB(22, 33, 38), Color3.fromRGB(27, 54, 78)},
+        top = {Color3.fromRGB(33, 49, 56), Color3.fromRGB(36, 73, 105)},
+        el = {Color3.fromRGB(36, 54, 61), Color3.fromRGB(30, 60, 87)},
+        acc = {Color3.fromRGB(150, 225, 255), Color3.fromRGB(80, 160, 230)},
+        card = Color3.fromRGB(25, 38, 43)},
+    {name = "pastel",
+        bg = {Color3.fromRGB(30, 22, 26), Color3.fromRGB(51, 60, 76)},
+        side = {Color3.fromRGB(38, 28, 33), Color3.fromRGB(57, 68, 86)},
+        top = {Color3.fromRGB(56, 41, 48), Color3.fromRGB(78, 92, 117)},
+        el = {Color3.fromRGB(61, 45, 52), Color3.fromRGB(64, 76, 96)},
+        acc = {Color3.fromRGB(255, 190, 220), Color3.fromRGB(170, 200, 255)},
+        card = Color3.fromRGB(43, 32, 37)},
+    {name = "synapse",
+        bg = {Color3.fromRGB(26, 7, 7), Color3.fromRGB(33, 9, 12)},
+        side = {Color3.fromRGB(33, 9, 9), Color3.fromRGB(37, 10, 13)},
+        top = {Color3.fromRGB(48, 13, 13), Color3.fromRGB(50, 13, 18)},
+        el = {Color3.fromRGB(52, 14, 14), Color3.fromRGB(41, 11, 15)},
+        acc = {Color3.fromRGB(220, 60, 60), Color3.fromRGB(110, 30, 40)},
+        card = Color3.fromRGB(37, 10, 10)},
+    {name = "vape",
+        bg = {Color3.fromRGB(7, 25, 13), Color3.fromRGB(9, 42, 27)},
+        side = {Color3.fromRGB(9, 32, 16), Color3.fromRGB(10, 47, 30)},
+        top = {Color3.fromRGB(13, 47, 24), Color3.fromRGB(13, 64, 41)},
+        el = {Color3.fromRGB(14, 51, 26), Color3.fromRGB(11, 53, 34)},
+        acc = {Color3.fromRGB(60, 215, 110), Color3.fromRGB(30, 140, 90)},
+        card = Color3.fromRGB(10, 36, 18)},
+    {name = "exhibition",
+        bg = {Color3.fromRGB(30, 19, 4), Color3.fromRGB(60, 33, 9)},
+        side = {Color3.fromRGB(38, 24, 6), Color3.fromRGB(68, 37, 10)},
+        top = {Color3.fromRGB(56, 35, 8), Color3.fromRGB(92, 50, 13)},
+        el = {Color3.fromRGB(61, 38, 9), Color3.fromRGB(76, 41, 11)},
+        acc = {Color3.fromRGB(255, 160, 40), Color3.fromRGB(200, 110, 30)},
+        card = Color3.fromRGB(43, 27, 6)},
+    {name = "sigma",
+        bg = {Color3.fromRGB(28, 28, 29), Color3.fromRGB(36, 36, 45)},
+        side = {Color3.fromRGB(35, 35, 36), Color3.fromRGB(40, 40, 51)},
+        top = {Color3.fromRGB(51, 51, 53), Color3.fromRGB(55, 55, 69)},
+        el = {Color3.fromRGB(56, 56, 58), Color3.fromRGB(45, 45, 57)},
+        acc = {Color3.fromRGB(235, 235, 245), Color3.fromRGB(120, 120, 150)},
+        card = Color3.fromRGB(39, 39, 41)},
 }
 local BASE = {bg = C.BG, side = C.SIDEBAR, top = C.TOPBAR, el = C.ELEMENT, acc = C.ACCENT}
 local WHITE = Color3.new(1, 1, 1)
@@ -13696,48 +14269,6 @@ end
 
 ]=====]
 
--- ================= АККАУНТЫ (только локально, на этом устройстве) =================
-local DEV_LOGIN = "user"      -- логин создателя
-local TESTERS = {}            -- логины тестеров, например: TESTERS = {"vasya", "petya"}
-local TIKTOKERS = {}          -- логины тех, кто снимает тикток про скрипт
-
-local ACC_FILE, SES_FILE = "ManewareAccounts.json", "ManewareSession.json"
-local HttpService = game:GetService("HttpService")
-local function readJson(path)
-	local ok, data = pcall(function()
-		if isfile and isfile(path) then return HttpService:JSONDecode(readfile(path)) end
-	end)
-	if ok and type(data) == "table" then return data end
-	return {}
-end
-local function writeJson(path, t)
-	pcall(function() if writefile then writefile(path, HttpService:JSONEncode(t)) end end)
-end
-local function hashPw(login, pw)
-	local s = "mw|" .. string.lower(login) .. "|" .. pw .. "|v1"
-	local h1, h2 = 5381, 52711
-	for r = 1, 3 do
-		for i = 1, #s do
-			local b = string.byte(s, i)
-			h1 = (h1 * 31 + b) % 4294967296
-			h2 = (h2 * 131 + b + i + r) % 4294967296
-		end
-	end
-	return string.format("%08x%08x", h1, h2)
-end
-
-local PREFIX_FILE = "ManewarePrefixes.json" -- назначения префиксов (их выдаёт аккаунт-создатель)
-local VALID_PREFIX = {default = true, tester = true, tiktok = true, developer = true}
-local function prefixFor(login)
-	local l = string.lower(login)
-	if l == DEV_LOGIN then return "developer" end
-	local ov = readJson(PREFIX_FILE)
-	if type(ov[l]) == "string" and VALID_PREFIX[ov[l]] then return ov[l] end
-	for _, n in ipairs(TIKTOKERS) do if string.lower(n) == l then return "tiktok" end end
-	for _, n in ipairs(TESTERS) do if string.lower(n) == l then return "tester" end end
-	return "default"
-end
-
 -- ================= ЛОГО (PNG встроен, подключается через getcustomasset) =================
 local function b64decode(data)
 	local alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
@@ -13769,253 +14300,13 @@ pcall(function()
 end)
 env.__MW_LOGO = LOGO_ASSET
 
--- ================= GUI =================
-local ACC_A = Color3.fromRGB(99, 102, 241)
-local ACC_B = Color3.fromRGB(168, 85, 247)
-local TXT = Color3.fromRGB(240, 240, 247)
-local DIM = Color3.fromRGB(128, 128, 150)
-local BAD = Color3.fromRGB(248, 113, 113)
-
-local function make(class, props, parent)
-	local o = Instance.new(class)
-	for k, v in pairs(props or {}) do o[k] = v end
-	if parent then o.Parent = parent end
-	return o
+-- ================= ЗАПУСК MM2 =================
+env.__MW_NL_SRC = NL_LIB
+env.__MW_ACC = nil
+local fn, err = loadstring(SRC_MM2, "=ManewareMM2")
+if not fn then
+	warn("[Maneware] compile error: " .. tostring(err))
+	return
 end
-local function round(r, p) return make("UICorner", {CornerRadius = UDim.new(0, r)}, p) end
-local function tween(o, t, props, style)
-	local tw = TweenService:Create(o, TweenInfo.new(t, style or Enum.EasingStyle.Quint, Enum.EasingDirection.Out), props)
-	tw:Play()
-	return tw
-end
-
-local gui = make("ScreenGui", {Name = "ManewareLauncher", ResetOnSpawn = false, IgnoreGuiInset = true,
-	DisplayOrder = 2147483000, ZIndexBehavior = Enum.ZIndexBehavior.Sibling})
-pcall(function() if syn and syn.protect_gui then syn.protect_gui(gui) end end)
-gui.Parent = guiParent
-
-local card = make("Frame", {AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
-	Size = UDim2.fromOffset(340, 412), BackgroundColor3 = Color3.fromRGB(16, 16, 24), BorderSizePixel = 0,
-	Active = true}, gui)
-round(18, card)
-make("UIGradient", {Rotation = 90, Color = ColorSequence.new(Color3.fromRGB(24, 24, 36), Color3.fromRGB(12, 12, 18))}, card)
-local scale = make("UIScale", {Scale = 0.8}, card)
-local stroke = make("UIStroke", {Thickness = 2, Color = Color3.new(1, 1, 1), ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, card)
-local strokeGrad = make("UIGradient", {Color = ColorSequence.new(ACC_A, ACC_B)}, stroke)
-
-if LOGO_ASSET then
-	make("ImageLabel", {AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 14),
-		Size = UDim2.fromOffset(53, 65), BackgroundTransparency = 1, Image = LOGO_ASSET,
-		ScaleType = Enum.ScaleType.Fit}, card)
-else
-	local logo = make("Frame", {AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 20),
-		Size = UDim2.fromOffset(54, 54), BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0}, card)
-	round(16, logo)
-	make("UIGradient", {Rotation = 45, Color = ColorSequence.new(ACC_A, ACC_B)}, logo)
-	make("TextLabel", {Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "M", Font = Enum.Font.GothamBlack,
-		TextSize = 30, TextColor3 = Color3.new(1, 1, 1)}, logo)
-end
-
-make("TextLabel", {Position = UDim2.new(0, 0, 0, 80), Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1,
-	Text = "Maneware", Font = Enum.Font.GothamBold, TextSize = 26, TextColor3 = TXT}, card)
-local subtitle = make("TextLabel", {Position = UDim2.new(0, 0, 0, 110), Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1,
-	Text = "Регистрация", Font = Enum.Font.Gotham, TextSize = 13, TextColor3 = DIM}, card)
-
-local line = make("Frame", {AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 138),
-	Size = UDim2.new(1, -40, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.6, BorderSizePixel = 0}, card)
-make("UIGradient", {Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0),
-	NumberSequenceKeypoint.new(1, 1)}), Color = ColorSequence.new(ACC_A, ACC_B)}, line)
-
-local close = make("TextButton", {AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 12),
-	Size = UDim2.fromOffset(28, 28), BackgroundColor3 = Color3.fromRGB(34, 34, 48), Text = "✕", Font = Enum.Font.GothamBold,
-	TextSize = 13, TextColor3 = DIM, AutoButtonColor = false, BorderSizePixel = 0}, card)
-round(14, close)
-
-local launching = false
-local rsConn
-local function shutdown()
-	pcall(function() if rsConn then rsConn:Disconnect() end end)
-	gui:Destroy()
-end
-close.Activated:Connect(function()
-	if launching then return end
-	launching = true
-	tween(scale, 0.16, {Scale = 0.85})
-	task.wait(0.16)
-	shutdown()
-end)
-
--- поле ввода с подписью
-local function field(y, placeholder, label)
-	make("TextLabel", {Position = UDim2.new(0, 22, 0, y - 17), Size = UDim2.new(1, -44, 0, 14), BackgroundTransparency = 1,
-		Text = label, Font = Enum.Font.GothamMedium, TextSize = 11, TextColor3 = DIM, TextXAlignment = Enum.TextXAlignment.Left}, card)
-	local box = make("Frame", {Position = UDim2.new(0, 20, 0, y), Size = UDim2.new(1, -40, 0, 40),
-		BackgroundColor3 = Color3.fromRGB(26, 26, 38), BorderSizePixel = 0}, card)
-	round(10, box)
-	local bs = make("UIStroke", {Color = Color3.fromRGB(48, 48, 68), Thickness = 1.5}, box)
-	local tb = make("TextBox", {Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(1, -52, 1, 0), BackgroundTransparency = 1,
-		Text = "", PlaceholderText = placeholder, PlaceholderColor3 = Color3.fromRGB(90, 90, 112), TextColor3 = TXT,
-		Font = Enum.Font.GothamMedium, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left, ClearTextOnFocus = false}, box)
-	tb.Focused:Connect(function() tween(bs, 0.15, {Color = ACC_A}) end)
-	tb.FocusLost:Connect(function() tween(bs, 0.15, {Color = Color3.fromRGB(48, 48, 68)}) end)
-	return tb, box
-end
-
-local loginBox = field(158, "Придумай логин", "ЛОГИН")
-local pwBox, pwFrame = field(212, "Пароль", "ПАРОЛЬ")
-
--- маскировка пароля точками + глазок
-local pwDots = make("TextLabel", {Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(1, -52, 1, 0), BackgroundTransparency = 1,
-	Text = "", Font = Enum.Font.GothamBold, TextSize = 15, TextColor3 = TXT, TextXAlignment = Enum.TextXAlignment.Left}, pwFrame)
-local pwShown = false
-local function refreshDots()
-	pwBox.TextTransparency = pwShown and 0 or 1
-	pwDots.Text = pwShown and "" or string.rep("•", #pwBox.Text)
-end
-pwBox:GetPropertyChangedSignal("Text"):Connect(refreshDots)
-local eye = make("TextButton", {AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(28, 28),
-	BackgroundTransparency = 1, Text = "👁", TextSize = 16, TextColor3 = DIM, AutoButtonColor = false}, pwFrame)
-eye.Activated:Connect(function() pwShown = not pwShown refreshDots() eye.TextColor3 = pwShown and ACC_A or DIM end)
-refreshDots()
-
--- запомнить пароль
-local remember = false
-local remRow = make("TextButton", {Position = UDim2.new(0, 20, 0, 266), Size = UDim2.new(1, -40, 0, 26), BackgroundTransparency = 1,
-	Text = "", AutoButtonColor = false}, card)
-local chk = make("Frame", {Position = UDim2.new(0, 2, 0.5, -10), Size = UDim2.fromOffset(20, 20), BackgroundColor3 = Color3.fromRGB(26, 26, 38),
-	BorderSizePixel = 0}, remRow)
-round(6, chk)
-local chkStroke = make("UIStroke", {Color = Color3.fromRGB(48, 48, 68), Thickness = 1.5}, chk)
-local chkMark = make("TextLabel", {Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "✓", Font = Enum.Font.GothamBold,
-	TextSize = 15, TextColor3 = Color3.new(1, 1, 1), Visible = false}, chk)
-make("TextLabel", {Position = UDim2.new(0, 32, 0, 0), Size = UDim2.new(1, -32, 1, 0), BackgroundTransparency = 1, Text = "Запомнить пароль",
-	Font = Enum.Font.GothamMedium, TextSize = 13, TextColor3 = TXT, TextXAlignment = Enum.TextXAlignment.Left}, remRow)
-local function setRemember(v)
-	remember = v
-	chkMark.Visible = v
-	tween(chk, 0.15, {BackgroundColor3 = v and ACC_A or Color3.fromRGB(26, 26, 38)})
-	tween(chkStroke, 0.15, {Color = v and ACC_A or Color3.fromRGB(48, 48, 68)})
-end
-remRow.Activated:Connect(function() setRemember(not remember) end)
-
-local errLabel = make("TextLabel", {Position = UDim2.new(0, 20, 0, 296), Size = UDim2.new(1, -40, 0, 16), BackgroundTransparency = 1,
-	Text = "", Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = BAD, TextXAlignment = Enum.TextXAlignment.Left}, card)
-
-local submit = make("TextButton", {Position = UDim2.new(0, 20, 0, 322), Size = UDim2.new(1, -40, 0, 46),
-	BackgroundColor3 = Color3.new(1, 1, 1), Text = "Создать аккаунт", Font = Enum.Font.GothamBold, TextSize = 16,
-	TextColor3 = Color3.new(1, 1, 1), AutoButtonColor = false, BorderSizePixel = 0}, card)
-round(12, submit)
-make("UIGradient", {Rotation = 0, Color = ColorSequence.new(ACC_A, ACC_B)}, submit)
-submit.MouseEnter:Connect(function() tween(submit, 0.15, {Size = UDim2.new(1, -34, 0, 48), Position = UDim2.new(0, 17, 0, 321)}) end)
-submit.MouseLeave:Connect(function() tween(submit, 0.15, {Size = UDim2.new(1, -40, 0, 46), Position = UDim2.new(0, 20, 0, 322)}) end)
-
-make("TextLabel", {AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -10), Size = UDim2.new(1, -20, 0, 14),
-	BackgroundTransparency = 1, Text = "Данные хранятся только на этом устройстве", Font = Enum.Font.Gotham,
-	TextSize = 10, TextColor3 = Color3.fromRGB(90, 90, 112)}, card)
-
--- сохранённая сессия
-local accounts = readJson(ACC_FILE)
-local session = readJson(SES_FILE)
-local savedHash
-if type(session.login) == "string" and type(session.hash) == "string" then
-	loginBox.Text = session.login
-	savedHash = session.hash
-	pwBox.PlaceholderText = "•••••••• (сохранён)"
-	setRemember(true)
-end
-pwBox:GetPropertyChangedSignal("Text"):Connect(function()
-	if #pwBox.Text > 0 then savedHash = nil end
-end)
-
-local function updateMode()
-	local l = string.lower(loginBox.Text)
-	if l ~= "" and accounts[l] then
-		subtitle.Text = "Вход"
-		submit.Text = "Войти"
-		loginBox.PlaceholderText = "Логин"
-	else
-		subtitle.Text = "Регистрация"
-		submit.Text = "Создать аккаунт"
-	end
-end
-loginBox:GetPropertyChangedSignal("Text"):Connect(updateMode)
-updateMode()
-
-local function fail(msg)
-	errLabel.Text = msg
-	local p = card.Position
-	for _, dx in ipairs({8, -8, 5, -5, 0}) do
-		tween(card, 0.04, {Position = UDim2.new(p.X.Scale, p.X.Offset + dx, p.Y.Scale, p.Y.Offset)})
-		task.wait(0.04)
-	end
-end
-
-local function launchMM2(login)
-	launching = true
-	tween(scale, 0.16, {Scale = 0.85})
-	task.wait(0.16)
-	shutdown()
-	env.__MW_NL_SRC = NL_LIB
-	env.__MW_ACC = {login = login, prefix = prefixFor(login)}
-	local fn, err = loadstring(SRC_MM2, "=ManewareMM2")
-	if not fn then
-		warn("[Maneware] compile error: " .. tostring(err))
-		return
-	end
-	local ok, e = xpcall(fn, function(m) return tostring(m) .. "\n" .. tostring(debug.traceback()) end)
-	if not ok then warn("[Maneware] runtime error: " .. tostring(e)) end
-end
-
-submit.Activated:Connect(function()
-	if launching then return end
-	errLabel.Text = ""
-	local login = string.gsub(loginBox.Text, "^%s+", "")
-	login = string.gsub(login, "%s+$", "")
-	if #login < 3 or #login > 16 or string.find(login, "[^%w_]") then
-		return fail("Логин: 3–16 символов (буквы, цифры, _)")
-	end
-	local hash
-	if #pwBox.Text == 0 and savedHash and session.login and string.lower(session.login) == string.lower(login) then
-		hash = savedHash
-	else
-		if #pwBox.Text < 4 then return fail("Пароль: минимум 4 символа") end
-		hash = hashPw(login, pwBox.Text)
-	end
-	local key = string.lower(login)
-	if accounts[key] then
-		if accounts[key] ~= hash then return fail("Неверный пароль") end
-	else
-		accounts[key] = hash
-		writeJson(ACC_FILE, accounts)
-	end
-	if remember then
-		writeJson(SES_FILE, {login = login, hash = hash})
-	else
-		writeJson(SES_FILE, {})
-	end
-	launchMM2(login)
-end)
-
--- перетаскивание за карточку
-do
-	local dragging, dragStart, startPos
-	card.InputBegan:Connect(function(i)
-		if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-			dragging, dragStart, startPos = true, i.Position, card.Position
-			i.Changed:Connect(function()
-				if i.UserInputState == Enum.UserInputState.End then dragging = false end
-			end)
-		end
-	end)
-	UIS.InputChanged:Connect(function(i)
-		if dragging and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-			local d = i.Position - dragStart
-			card.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-		end
-	end)
-end
-
-tween(scale, 0.4, {Scale = 1}, Enum.EasingStyle.Back)
-rsConn = RunService.RenderStepped:Connect(function()
-	strokeGrad.Rotation = (os.clock() * 90) % 360
-end)
+local ok, e = xpcall(fn, function(m) return tostring(m) .. "\n" .. tostring(debug.traceback()) end)
+if not ok then warn("[Maneware] runtime error: " .. tostring(e)) end
