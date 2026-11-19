@@ -12381,34 +12381,74 @@ end)
 --------------------------------------------------
 -- ===== Hitlog =====
 safe("Hitlog", function()
+    local C3 = Color3.fromRGB
+    local function CS(...) -- ColorSequence из списка цветов
+        local t, n = {...}, select("#", ...)
+        local k = {}
+        for i, c in ipairs(t) do k[i] = ColorSequenceKeypoint.new((i - 1) / math.max(1, n - 1), c) end
+        return ColorSequence.new(k)
+    end
+    -- ui: bg/bgT фон, corner скругление, stroke/sth/strokeT рамка, bar {сторона, цвет|ColorSequence, толщина},
+    --     grad {цвет1, цвет2, угол}, fadeR (фон тает вправо), size, tstroke (обводка текста),
+    --     px/py отступы, anim (slide|drop|pop|type|fade), upper, dmgCol, boldName
     local HLS = {
-        {name = "Neverlose (CS2)", prefix = "[neverlose] ", pc = Color3.fromRGB(0, 175, 255), nc = Color3.fromRGB(0, 175, 255), tmpl = "Hit {n} in the {b} for {d} damage ({h} remaining)", font = Enum.Font.GothamMedium},
-        {name = "Skeet (CS)", prefix = "", pc = Color3.fromRGB(159, 202, 43), nc = Color3.fromRGB(159, 202, 43), tmpl = "Hit {n} in the {b} for {d} damage ({h} health remaining)", font = Enum.Font.Code},
-        {name = "Gamesense (CS)", prefix = "[gamesense] ", pc = Color3.fromRGB(159, 202, 43), nc = Color3.fromRGB(159, 202, 43), tmpl = "Hit {n} in the {b} for {d} damage ({h} health remaining)", font = Enum.Font.Code},
-        {name = "Onetap (CS)", prefix = "[onetap] ", pc = Color3.fromRGB(255, 165, 0), nc = Color3.fromRGB(255, 200, 90), tmpl = "Hit {n} in {b} for {d} ({h} hp)", font = Enum.Font.SourceSansBold},
-        {name = "Aimware (CS)", prefix = "[Aimware] ", pc = Color3.fromRGB(230, 60, 60), nc = Color3.fromRGB(255, 120, 120), tmpl = "Hit {n} in the {b} for {d} damage", font = Enum.Font.SourceSansBold},
-        {name = "Fatality (CS)", prefix = "[fatality] ", pc = Color3.fromRGB(255, 50, 120), nc = Color3.fromRGB(255, 120, 170), tmpl = "hit {n} -{d}hp ({h})", font = Enum.Font.GothamMedium},
-        {name = "Nixware (CS)", prefix = "[nixware] ", pc = Color3.fromRGB(150, 120, 255), nc = Color3.fromRGB(190, 170, 255), tmpl = "Hit {n} for {d} in {b}", font = Enum.Font.GothamMedium},
-        {name = "Primordial (CS)", prefix = "[primordial] ", pc = Color3.fromRGB(255, 255, 255), nc = Color3.fromRGB(220, 220, 255), tmpl = "Hit {n} ({b}) -{d}", font = Enum.Font.GothamMedium},
-        {name = "Pandora (CS)", prefix = "[pandora] ", pc = Color3.fromRGB(180, 90, 255), nc = Color3.fromRGB(210, 150, 255), tmpl = "hit {n} in {b} for {d}", font = Enum.Font.GothamMedium},
-        {name = "Evolve (CS)", prefix = "[evolve] ", pc = Color3.fromRGB(60, 220, 110), nc = Color3.fromRGB(130, 240, 160), tmpl = "> {n} -{d} ({b})", font = Enum.Font.GothamMedium},
-        {name = "Legendware (CS)", prefix = "[legendware] ", pc = Color3.fromRGB(255, 100, 200), nc = Color3.fromRGB(255, 160, 225), tmpl = "hit {n} {d} dmg", font = Enum.Font.GothamMedium},
-        {name = "Spirthack (CS)", prefix = "[spirthack] ", pc = Color3.fromRGB(80, 160, 255), nc = Color3.fromRGB(150, 200, 255), tmpl = "hit {n} -{d} [{b}]", font = Enum.Font.Code},
-        {name = "Meteor (MC)", prefix = "[Meteor] ", pc = Color3.fromRGB(145, 61, 226), nc = Color3.fromRGB(200, 160, 255), tmpl = "Hit {n} for {d} damage.", font = Enum.Font.Arcade},
-        {name = "Wurst (MC)", prefix = "[Wurst] ", pc = Color3.fromRGB(255, 170, 0), nc = Color3.fromRGB(255, 210, 120), tmpl = "Dealt {d} damage to {n}", font = Enum.Font.Arcade},
-        {name = "Future (MC)", prefix = "[Future] ", pc = Color3.fromRGB(60, 150, 255), nc = Color3.fromRGB(150, 200, 255), tmpl = "{n} -{d} ({h} hp)", font = Enum.Font.Arcade},
-        {name = "Sigma (MC)", prefix = "Sigma » ", pc = Color3.fromRGB(235, 235, 245), nc = Color3.fromRGB(255, 255, 255), tmpl = "Hit {n} (-{d})", font = Enum.Font.GothamBold},
-        {name = "Novoline (MC)", prefix = "[Novoline] ", pc = Color3.fromRGB(200, 60, 220), nc = Color3.fromRGB(230, 140, 245), tmpl = "Hit {n} -{d}", font = Enum.Font.Arcade},
-        {name = "Vape (MC)", prefix = "Vape » ", pc = Color3.fromRGB(55, 200, 100), nc = Color3.fromRGB(140, 240, 170), tmpl = "Hit {n} for {d}", font = Enum.Font.GothamMedium},
-        {name = "Exhibition (MC)", prefix = "", pc = Color3.fromRGB(255, 150, 0), nc = Color3.fromRGB(255, 150, 0), tmpl = "Hit {n} for {d} damage", font = Enum.Font.Arcade},
-        {name = "LiquidBounce (MC)", prefix = "[LiquidBounce] ", pc = Color3.fromRGB(70, 160, 255), nc = Color3.fromRGB(150, 200, 255), tmpl = "Hit {n} -{d}", font = Enum.Font.GothamMedium},
-        {name = "Synapse X", prefix = "[Synapse] ", pc = Color3.fromRGB(200, 30, 30), nc = Color3.fromRGB(255, 110, 110), tmpl = "hit {n} (-{d})", font = Enum.Font.GothamMedium},
-        {name = "Valorant", prefix = "", pc = Color3.fromRGB(255, 70, 85), nc = Color3.fromRGB(255, 70, 85), tmpl = "HIT  {n}  -{d}", font = Enum.Font.GothamBold},
-        {name = "Rust", prefix = "[RUST] ", pc = Color3.fromRGB(200, 90, 40), nc = Color3.fromRGB(235, 150, 90), tmpl = "You hit {n} in the {b} for {d} damage", font = Enum.Font.SourceSansBold},
-        {name = "CS2 Damage", prefix = "[CS2] ", pc = Color3.fromRGB(255, 180, 40), nc = Color3.fromRGB(255, 210, 120), tmpl = "Damage Given to {n} - {d} in {b}", font = Enum.Font.SourceSansBold},
-        {name = "Fortnite", prefix = "", pc = Color3.fromRGB(140, 90, 255), nc = Color3.fromRGB(190, 150, 255), tmpl = "{n}  -{d}", font = Enum.Font.GothamBold},
-        {name = "Roblox", prefix = "[Hit] ", pc = Color3.fromRGB(120, 120, 150), nc = Color3.fromRGB(235, 235, 245), tmpl = "{n} (-{d}) {h} HP left", font = Enum.Font.GothamMedium},
+        {name = "Neverlose (CS2)", prefix = "[neverlose] ", pc = C3(0, 175, 255), nc = C3(0, 175, 255), tmpl = "Hit {n} in the {b} for {d} damage ({h} remaining)", font = Enum.Font.GothamMedium,
+         ui = {bg = C3(255, 255, 255), bgT = 0.1, grad = {C3(14, 20, 38), C3(8, 10, 20), 0}, corner = 6, stroke = C3(0, 175, 255), sth = 1, strokeT = 0.55,
+               bar = {"left", C3(0, 175, 255), 3}, tstroke = 1, px = 8, py = 4, anim = "slide"}},
+        {name = "Skeet (CS)", prefix = "", pc = C3(159, 202, 43), nc = C3(159, 202, 43), tmpl = "Hit {n} in the {b} for {d} damage ({h} health remaining)", font = Enum.Font.Code,
+         ui = {bgT = 1, tstroke = 0, size = 16, px = 2, py = 1, anim = "fade", boldName = true}},
+        {name = "Gamesense (CS)", prefix = "[gamesense] ", pc = C3(159, 202, 43), nc = C3(159, 202, 43), tmpl = "Hit {n} in the {b} for {d} damage ({h} health remaining)", font = Enum.Font.Code,
+         ui = {bg = C3(17, 17, 17), bgT = 0.15, stroke = C3(55, 55, 55), sth = 1, strokeT = 0,
+               bar = {"top", CS(C3(60, 140, 255), C3(190, 70, 220), C3(230, 210, 50)), 2}, tstroke = 0.4, size = 13, px = 7, py = 4, anim = "type"}},
+        {name = "Onetap (CS)", prefix = "[onetap] ", pc = C3(255, 165, 0), nc = C3(255, 200, 90), tmpl = "Hit {n} in {b} for {d} ({h} hp)", font = Enum.Font.SourceSansBold,
+         ui = {bg = C3(30, 30, 34), bgT = 0.05, bar = {"bottom", C3(255, 165, 0), 2}, tstroke = 1, size = 16, px = 8, py = 3, anim = "slide"}},
+        {name = "Aimware (CS)", prefix = "[Aimware] ", pc = C3(230, 60, 60), nc = C3(255, 120, 120), tmpl = "Hit {n} in the {b} for {d} damage", font = Enum.Font.SourceSansBold,
+         ui = {bg = C3(20, 20, 22), bgT = 0.1, stroke = C3(230, 60, 60), sth = 1, strokeT = 0.4, bar = {"left", C3(230, 60, 60), 2}, tstroke = 1, size = 15, px = 7, py = 3, anim = "slide"}},
+        {name = "Fatality (CS)", prefix = "[fatality] ", pc = C3(255, 50, 120), nc = C3(255, 120, 170), tmpl = "hit {n} -{d}hp ({h})", font = Enum.Font.GothamMedium,
+         ui = {bg = C3(255, 255, 255), bgT = 0.05, grad = {C3(255, 50, 120), C3(60, 15, 45), 0}, corner = 10, tstroke = 1, size = 14, px = 10, py = 4, anim = "pop"}},
+        {name = "Nixware (CS)", prefix = "[nixware] ", pc = C3(150, 120, 255), nc = C3(190, 170, 255), tmpl = "Hit {n} for {d} in {b}", font = Enum.Font.GothamMedium,
+         ui = {bg = C3(20, 16, 34), bgT = 0.1, corner = 4, bar = {"bottom", CS(C3(150, 120, 255), C3(80, 170, 255)), 2}, tstroke = 1, px = 9, py = 4, anim = "fade"}},
+        {name = "Primordial (CS)", prefix = "[primordial] ", pc = C3(255, 255, 255), nc = C3(220, 220, 255), tmpl = "Hit {n} ({b}) -{d}", font = Enum.Font.GothamMedium,
+         ui = {bg = C3(255, 255, 255), bgT = 0.9, corner = 2, bar = {"bottom", C3(255, 255, 255), 1}, tstroke = 1, size = 13, px = 8, py = 3, anim = "slide"}},
+        {name = "Pandora (CS)", prefix = "[pandora] ", pc = C3(180, 90, 255), nc = C3(210, 150, 255), tmpl = "hit {n} in {b} for {d}", font = Enum.Font.GothamMedium,
+         ui = {bg = C3(18, 10, 30), bgT = 0.15, corner = 8, stroke = C3(180, 90, 255), sth = 1.5, strokeT = 0.2, tstroke = 1, px = 10, py = 4, anim = "pop"}},
+        {name = "Evolve (CS)", prefix = "[evolve] ", pc = C3(60, 220, 110), nc = C3(130, 240, 160), tmpl = "> {n} -{d} ({b})", font = Enum.Font.GothamMedium,
+         ui = {bg = C3(10, 20, 14), bgT = 0.25, corner = 2, bar = {"left", C3(60, 220, 110), 2}, tstroke = 1, size = 13, px = 7, py = 3, anim = "type"}},
+        {name = "Legendware (CS)", prefix = "[legendware] ", pc = C3(255, 100, 200), nc = C3(255, 160, 225), tmpl = "hit {n} {d} dmg", font = Enum.Font.GothamMedium,
+         ui = {bg = C3(255, 255, 255), bgT = 0.15, grad = {C3(255, 100, 200), C3(40, 15, 45), 0}, fadeR = true, tstroke = 0.7, px = 8, py = 3, anim = "slide"}},
+        {name = "Spirthack (CS)", prefix = "[spirthack] ", pc = C3(80, 160, 255), nc = C3(150, 200, 255), tmpl = "hit {n} -{d} [{b}]", font = Enum.Font.Code,
+         ui = {bg = C3(8, 14, 28), bgT = 0.2, stroke = C3(80, 160, 255), sth = 1, strokeT = 0, tstroke = 1, size = 13, px = 6, py = 2, anim = "type"}},
+        {name = "Meteor (MC)", prefix = "[Meteor] ", pc = C3(145, 61, 226), nc = C3(200, 160, 255), tmpl = "Hit {n} for {d} damage.", font = Enum.Font.Arcade,
+         ui = {bg = C3(24, 12, 40), bgT = 0.1, corner = 4, stroke = C3(145, 61, 226), sth = 2, strokeT = 0, tstroke = 0.3, size = 16, px = 10, py = 5, anim = "drop"}},
+        {name = "Wurst (MC)", prefix = "[Wurst] ", pc = C3(255, 170, 0), nc = C3(255, 210, 120), tmpl = "Dealt {d} damage to {n}", font = Enum.Font.Arcade,
+         ui = {bg = C3(0, 0, 0), bgT = 0.5, tstroke = 0.25, size = 16, px = 3, py = 1, anim = "fade"}},
+        {name = "Future (MC)", prefix = "[Future] ", pc = C3(60, 150, 255), nc = C3(150, 200, 255), tmpl = "{n} -{d} ({h} hp)", font = Enum.Font.Arcade,
+         ui = {bg = C3(255, 255, 255), bgT = 0.2, grad = {C3(5, 15, 35), C3(5, 15, 35), 0}, fadeR = true, bar = {"left", C3(60, 150, 255), 2}, tstroke = 0.4, size = 15, px = 8, py = 3, anim = "slide", dmgCol = true}},
+        {name = "Sigma (MC)", prefix = "Sigma » ", pc = C3(235, 235, 245), nc = C3(255, 255, 255), tmpl = "Hit {n} (-{d})", font = Enum.Font.GothamBold,
+         ui = {bg = C3(22, 22, 28), bgT = 0.1, corner = 99, stroke = C3(235, 235, 245), sth = 1, strokeT = 0.6, tstroke = 1, size = 13, px = 14, py = 4, anim = "pop"}},
+        {name = "Novoline (MC)", prefix = "[Novoline] ", pc = C3(200, 60, 220), nc = C3(230, 140, 245), tmpl = "Hit {n} -{d}", font = Enum.Font.Arcade,
+         ui = {bg = C3(0, 0, 0), bgT = 0.4, bar = {"top", CS(C3(200, 60, 220), C3(255, 110, 170)), 2}, tstroke = 0.3, size = 15, px = 7, py = 4, anim = "drop"}},
+        {name = "Vape (MC)", prefix = "Vape » ", pc = C3(55, 200, 100), nc = C3(140, 240, 170), tmpl = "Hit {n} for {d}", font = Enum.Font.GothamMedium,
+         ui = {bg = C3(24, 24, 24), bgT = 0.08, corner = 5, stroke = C3(55, 200, 100), sth = 1.5, strokeT = 0.3, tstroke = 1, px = 9, py = 4, anim = "drop"}},
+        {name = "Exhibition (MC)", prefix = "", pc = C3(255, 150, 0), nc = C3(255, 150, 0), tmpl = "Hit {n} for {d} damage", font = Enum.Font.Arcade,
+         ui = {bgT = 1, tstroke = 0, size = 16, px = 2, py = 1, anim = "type"}},
+        {name = "LiquidBounce (MC)", prefix = "[LiquidBounce] ", pc = C3(70, 160, 255), nc = C3(150, 200, 255), tmpl = "Hit {n} -{d}", font = Enum.Font.GothamMedium,
+         ui = {bg = C3(10, 20, 40), bgT = 0.3, corner = 3, bar = {"bottom", C3(70, 160, 255), 2}, tstroke = 1, px = 8, py = 4, anim = "pop"}},
+        {name = "Synapse X", prefix = "[Synapse] ", pc = C3(200, 30, 30), nc = C3(255, 110, 110), tmpl = "hit {n} (-{d})", font = Enum.Font.GothamMedium,
+         ui = {bg = C3(18, 4, 4), bgT = 0.05, stroke = C3(200, 30, 30), sth = 1, strokeT = 0.3, tstroke = 1, size = 12, px = 7, py = 3, anim = "fade", upper = true}},
+        {name = "Valorant", prefix = "", pc = C3(255, 70, 85), nc = C3(255, 70, 85), tmpl = "HIT  {n}  -{d}", font = Enum.Font.GothamBold,
+         ui = {bg = C3(15, 25, 35), bgT = 0.05, bar = {"left", C3(255, 70, 85), 6}, tstroke = 1, size = 16, px = 12, py = 5, anim = "slide", upper = true, dmgCol = true}},
+        {name = "Rust", prefix = "[RUST] ", pc = C3(200, 90, 40), nc = C3(235, 150, 90), tmpl = "You hit {n} in the {b} for {d} damage", font = Enum.Font.SourceSansBold,
+         ui = {bg = C3(32, 26, 22), bgT = 0.15, corner = 2, stroke = C3(200, 90, 40), sth = 1, strokeT = 0.5, tstroke = 1, size = 15, px = 9, py = 4, anim = "fade"}},
+        {name = "CS2 Damage", prefix = "[CS2] ", pc = C3(255, 180, 40), nc = C3(255, 210, 120), tmpl = "Damage Given to {n} - {d} in {b}", font = Enum.Font.SourceSansBold,
+         ui = {bgT = 1, tstroke = 0, size = 18, px = 2, py = 1, anim = "pop", dmgCol = true}},
+        {name = "Fortnite", prefix = "", pc = C3(140, 90, 255), nc = C3(190, 150, 255), tmpl = "{n}  -{d}", font = Enum.Font.GothamBold,
+         ui = {bgT = 1, tstroke = 0, size = 22, px = 2, py = 0, anim = "pop", dmgCol = true, boldName = true}},
+        {name = "Roblox", prefix = "[Hit] ", pc = C3(120, 120, 150), nc = C3(235, 235, 245), tmpl = "{n} (-{d}) {h} HP left", font = Enum.Font.GothamMedium,
+         ui = {bg = C3(0, 0, 0), bgT = 0.45, corner = 6, tstroke = 0.6, px = 8, py = 3, anim = "fade"}},
     }
+    local UID = {bg = Color3.new(0, 0, 0), bgT = 0.35, corner = 0, size = 14, tstroke = 0.6, px = 6, py = 2, anim = "fade"}
+    for _, s in ipairs(HLS) do s.ui = setmetatable(s.ui or {}, {__index = UID}) end
     local hl = {on = false, style = 1, time = 6, lines = 6, y = 120}
     local names = {}
     for i, s in ipairs(HLS) do names[i] = s.name end
@@ -12432,34 +12472,157 @@ safe("Hitlog", function()
     local function hex(c)
         return string.format("#%02x%02x%02x", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
     end
+    local function dmgColor(d)
+        if d >= 75 then return Color3.fromRGB(255, 60, 60) end
+        if d >= 40 then return Color3.fromRGB(255, 170, 40) end
+        if d >= 20 then return Color3.fromRGB(255, 235, 90) end
+        return Color3.new(1, 1, 1)
+    end
+    local function prep(root) -- запоминаем исходную прозрачность и прячем всё
+        for _, d in ipairs(root:GetDescendants()) do
+            if d:IsA("Frame") then
+                d:SetAttribute("mwa", d.BackgroundTransparency)
+                d.BackgroundTransparency = 1
+            elseif d:IsA("TextLabel") then
+                d:SetAttribute("mwa", d.TextTransparency)
+                d:SetAttribute("mwb", d.TextStrokeTransparency)
+                d.TextTransparency, d.TextStrokeTransparency = 1, 1
+            elseif d:IsA("UIStroke") then
+                d:SetAttribute("mwa", d.Transparency)
+                d.Transparency = 1
+            end
+        end
+    end
+    local function fade(root, out, dur, style)
+        local ti = TweenInfo.new(dur, style or Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        for _, d in ipairs(root:GetDescendants()) do
+            local g
+            if d:IsA("Frame") then
+                g = {BackgroundTransparency = out and 1 or d:GetAttribute("mwa")}
+            elseif d:IsA("TextLabel") then
+                g = {TextTransparency = out and 1 or d:GetAttribute("mwa"), TextStrokeTransparency = out and 1 or d:GetAttribute("mwb")}
+            elseif d:IsA("UIStroke") then
+                g = {Transparency = out and 1 or d:GetAttribute("mwa")}
+            end
+            if g then pcall(function() TweenService:Create(d, ti, g):Play() end) end
+        end
+    end
     local function addLog(name, dmg, hp, box)
         if not hl.on then return end
         local S = HLS[hl.style] or HLS[1]
+        local ui = S.ui
         order = order + 1
-        local txt = S.tmpl
-        local nameTxt = '<font color="' .. hex(S.nc) .. '">' .. tostring(name):gsub("[<>&]", "") .. "</font>"
+
+        -- текст
+        local tmpl = S.tmpl
+        local prefix = S.prefix
+        local nm = tostring(name):gsub("[<>&]", "")
+        local bx = tostring(box)
+        if ui.upper then
+            tmpl = tmpl:upper():gsub("{(%u)}", function(c) return "{" .. c:lower() .. "}" end)
+            prefix, nm, bx = prefix:upper(), nm:upper(), bx:upper()
+        end
+        local nameTxt = '<font color="' .. hex(S.nc) .. '">' .. (ui.boldName and ("<b>" .. nm .. "</b>") or nm) .. "</font>"
+        local dmgTxt = tostring(dmg)
+        if ui.dmgCol then dmgTxt = '<font color="' .. hex(dmgColor(dmg)) .. '"><b>' .. dmgTxt .. "</b></font>" end
+        local txt = tmpl
         txt = txt:gsub("{n}", function() return nameTxt end)
-        txt = txt:gsub("{d}", function() return tostring(dmg) end)
+        txt = txt:gsub("{d}", function() return dmgTxt end)
         txt = txt:gsub("{h}", function() return tostring(hp) end)
-        txt = txt:gsub("{b}", function() return box end)
-        local line = new("Frame", {AutomaticSize = Enum.AutomaticSize.XY, BackgroundColor3 = Color3.new(0, 0, 0),
-            BackgroundTransparency = 0.35, BorderSizePixel = 0, LayoutOrder = order}, hl.box)
-        new("UIPadding", {PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6), PaddingTop = UDim.new(0, 2),
-            PaddingBottom = UDim.new(0, 2)}, line)
-        local lb = new("TextLabel", {AutomaticSize = Enum.AutomaticSize.XY, BackgroundTransparency = 1, RichText = true,
-            Text = (S.prefix ~= "" and ('<font color="' .. hex(S.pc) .. '">' .. S.prefix .. "</font>") or "") .. txt,
-            TextColor3 = Color3.new(1, 1, 1), TextSize = 14, Font = S.font, TextXAlignment = Enum.TextXAlignment.Left,
-            TextStrokeTransparency = 0.6}, line)
+        txt = txt:gsub("{b}", function() return bx end)
+        if prefix ~= "" then txt = '<font color="' .. hex(S.pc) .. '">' .. prefix .. "</font>" .. txt end
+
+        -- контейнер (holder держит место в списке, line двигается/масштабируется внутри)
+        local holder = new("Frame", {AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.new(0, 0, 0, 0),
+            BackgroundTransparency = 1, BorderSizePixel = 0, LayoutOrder = order}, hl.box)
+        local line = new("Frame", {AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.new(0, 0, 0, 0),
+            BackgroundColor3 = ui.bg, BackgroundTransparency = ui.bgT, BorderSizePixel = 0}, holder)
+        if ui.corner > 0 then new("UICorner", {CornerRadius = UDim.new(0, ui.corner)}, line) end
+        if ui.stroke then
+            new("UIStroke", {Color = ui.stroke, Thickness = ui.sth or 1, Transparency = ui.strokeT or 0,
+                ApplyStrokeMode = Enum.ApplyStrokeMode.Border}, line)
+        end
+        if ui.grad or ui.fadeR then
+            local g = ui.grad
+            new("UIGradient", {
+                Color = g and ColorSequence.new(g[1], g[2]) or ColorSequence.new(Color3.new(1, 1, 1)),
+                Rotation = g and g[3] or 0,
+                Transparency = ui.fadeR and NumberSequence.new({NumberSequenceKeypoint.new(0, 0),
+                    NumberSequenceKeypoint.new(0.65, 0.25), NumberSequenceKeypoint.new(1, 1)}) or NumberSequence.new(0),
+            }, line)
+        end
+
+        -- акцентная полоска
+        local pl, pr, pt, pb = ui.px, ui.px, ui.py, ui.py
+        if ui.bar then
+            local side, col, sz = ui.bar[1], ui.bar[2], ui.bar[3]
+            local isSeq = typeof(col) == "ColorSequence"
+            local bar = new("Frame", {BackgroundColor3 = isSeq and Color3.new(1, 1, 1) or col, BorderSizePixel = 0, ZIndex = 2}, line)
+            if isSeq then new("UIGradient", {Color = col}, bar) end
+            if side == "left" then
+                bar.Size = UDim2.new(0, sz, 1, 0); pl = pl + sz
+            elseif side == "right" then
+                bar.Size = UDim2.new(0, sz, 1, 0); bar.AnchorPoint = Vector2.new(1, 0); bar.Position = UDim2.new(1, 0, 0, 0); pr = pr + sz
+            elseif side == "top" then
+                bar.Size = UDim2.new(1, 0, 0, sz); pt = pt + sz
+            else
+                bar.Size = UDim2.new(1, 0, 0, sz); bar.AnchorPoint = Vector2.new(0, 1); bar.Position = UDim2.new(0, 0, 1, 0); pb = pb + sz
+            end
+        end
+        new("UIPadding", {PaddingLeft = UDim.new(0, pl), PaddingRight = UDim.new(0, pr), PaddingTop = UDim.new(0, pt),
+            PaddingBottom = UDim.new(0, pb)}, line)
+
+        local lb = new("TextLabel", {AutomaticSize = Enum.AutomaticSize.XY, Size = UDim2.new(0, 0, 0, 0), BackgroundTransparency = 1,
+            RichText = true, Text = txt, TextColor3 = Color3.new(1, 1, 1), TextSize = ui.size, Font = S.font,
+            TextXAlignment = Enum.TextXAlignment.Left, TextStrokeTransparency = ui.tstroke, ZIndex = 3}, line)
+
+        -- обрезаем старые строки
         local kids = {}
         for _, c in ipairs(hl.box:GetChildren()) do if c:IsA("Frame") then kids[#kids + 1] = c end end
-        table.sort(kids, function(a, b) return a.LayoutOrder < b.LayoutOrder end)
+        table.sort(kids, function(x, y) return x.LayoutOrder < y.LayoutOrder end)
         while #kids > hl.lines do table.remove(kids, 1):Destroy() end
+
+        -- анимация появления (у каждого стиля своя)
+        prep(holder)
+        local anim = ui.anim
+        if anim == "slide" then
+            line.Position = UDim2.new(0, -45, 0, 0)
+            TweenService:Create(line, TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)}):Play()
+            fade(holder, false, 0.18)
+        elseif anim == "drop" then
+            line.Position = UDim2.new(0, 0, 0, -16)
+            TweenService:Create(line, TweenInfo.new(0.25, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out), {Position = UDim2.new(0, 0, 0, 0)}):Play()
+            fade(holder, false, 0.12)
+        elseif anim == "pop" then
+            local sc = new("UIScale", {Scale = 0.55}, line)
+            TweenService:Create(sc, TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Scale = 1}):Play()
+            fade(holder, false, 0.12)
+        elseif anim == "type" then
+            fade(holder, false, 0.08)
+            task.spawn(function()
+                local n = 0
+                pcall(function() n = utf8.len(lb.ContentText) or #lb.ContentText end)
+                if n <= 0 then return end
+                local step = math.min(0.03, 0.4 / n)
+                for i = 0, n do
+                    if not lb.Parent then return end
+                    lb.MaxVisibleGraphemes = i
+                    task.wait(step)
+                end
+                lb.MaxVisibleGraphemes = -1
+            end)
+        else
+            fade(holder, false, 0.18)
+        end
+
         task.delay(hl.time, function()
-            if not line.Parent then return end
-            TweenService:Create(line, TweenInfo.new(0.4), {BackgroundTransparency = 1}):Play()
-            TweenService:Create(lb, TweenInfo.new(0.4), {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
+            if not holder.Parent then return end
+            if anim == "slide" then
+                TweenService:Create(line, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {Position = UDim2.new(0, -45, 0, 0)}):Play()
+            end
+            fade(holder, true, 0.4)
             task.wait(0.45)
-            line:Destroy()
+            holder:Destroy()
         end)
     end
 
