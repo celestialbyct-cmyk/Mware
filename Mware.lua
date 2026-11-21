@@ -8107,6 +8107,63 @@ local function shoot(pos)
     pcall(function() gun:Activate() end)
 end
 
+-- HACKER (пуля сквозь стены): сервер считает выстрел лучом от ТЕБЯ до цели, и стена его останавливает.
+-- Поэтому на мгновение ставим персонажа в ближайшую точку с чистой линией до цели, стреляем и возвращаем назад.
+MWV.charList = function()
+    local ex = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Character then ex[#ex + 1] = p.Character end
+    end
+    return ex
+end
+MWV.clearShot = function(from, to)
+    local rp = RaycastParams.new()
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+    rp.FilterDescendantsInstances = MWV.charList()
+    return workspace:Raycast(from, to - from, rp) == nil
+end
+MWV.wallShoot = function(tp)
+    local hrp = myHrp()
+    if not hrp then return end
+    local ex = MWV.charList()
+    local rp = RaycastParams.new()
+    rp.FilterType = Enum.RaycastFilterType.Exclude
+    rp.FilterDescendantsInstances = ex
+    local op = OverlapParams.new()
+    op.FilterType = Enum.RaycastFilterType.Exclude
+    op.FilterDescendantsInstances = ex
+    local spot, bestD
+    for _, dist in ipairs({3, 5, 8}) do
+        for i = 0, 7 do
+            local a = i * math.pi / 4
+            for _, dy in ipairs({0, 2.5}) do
+                local cand = tp + Vector3.new(math.cos(a) * dist, dy, math.sin(a) * dist)
+                if not workspace:Raycast(cand, tp - cand, rp) then
+                    local blocked = false
+                    for _, part in ipairs(workspace:GetPartBoundsInBox(CFrame.new(cand), Vector3.new(2.6, 4.5, 2.6), op)) do
+                        if part.CanCollide then blocked = true break end
+                    end
+                    if not blocked then
+                        local d = (cand - hrp.Position).Magnitude
+                        if not bestD or d < bestD then bestD, spot = d, cand end
+                    end
+                end
+            end
+        end
+        if spot then break end
+    end
+    if not spot then shoot(tp) return end
+    local old = hrp.CFrame
+    pcall(function()
+        hrp.CFrame = CFrame.lookAt(spot, Vector3.new(tp.X, spot.Y, tp.Z))
+        hrp.AssemblyLinearVelocity = Vector3.zero
+        task.wait(math.clamp(getRtt() * 0.5 + 0.04, 0.05, 0.25)) -- ждём, пока сервер увидит новую позицию
+        shoot(tp)
+    end)
+    hrp.CFrame = old
+    hrp.AssemblyLinearVelocity = Vector3.zero
+end
+
 RunService.Heartbeat:Connect(function()
     if not aim.on or MWV.aimBusy then return end
     if os.clock() - aim.last < aim.cd then return end
@@ -8125,7 +8182,15 @@ RunService.Heartbeat:Connect(function()
     MWV.aimBusy = true
     aim.last = os.clock()
     task.spawn(function()
-        pcall(function() shoot(predictPos(mh)) end)
+        pcall(function()
+            local tp = predictPos(mh)
+            local eye = myH.Position + Vector3.new(0, 1.5, 0)
+            if aim.hacker and not MWV.clearShot(eye, tp) then
+                MWV.wallShoot(tp) -- цель за стеной: стреляем из точки с чистой линией
+            else
+                shoot(tp)
+            end
+        end)
         MWV.aimBusy = false
     end)
 end)
@@ -11903,6 +11968,942 @@ tSk.Button("✔ Применить ID неба", function()
 end)
 
 
+--------------------------------------------------
+-- WORLDTWEAKS: погода (1 = дождь, 2 = гроза). Всё клиентское, видишь только ты.
+--------------------------------------------------
+do
+    local Lighting = game:GetService("Lighting")
+    local SoundService = game:GetService("SoundService")
+    local Debris = game:GetService("Debris")
+    local W = {on = false, sel = 1, gen = 0, conns = {}, orig = nil, puddles = {}, intensity = 100, nextBolt = 0, acc = 0, chk = 0, indoor = false}
+
+    -- Звуки (если какой-то ID не загрузится, просто будет тишина — замени на свой)
+    local RAIN_SOUND = "rbxassetid://9120386436"
+    local THUNDER_SOUNDS = {"rbxassetid://1837829565", "rbxassetid://1837831248"}
+    local SPARK = "rbxasset://textures/particles/sparkles_main.dds"
+    local SMOKE = "rbxasset://textures/particles/smoke_main.dds"
+
+    local PRESETS = {
+        { -- 1: дождь
+            rate = 700, splash = 45, wind = 4, vol = 0.45, storm = false,
+            atm = {Density = 0.36, Offset = 0.2, Color = Color3.fromRGB(150, 156, 168), Decay = Color3.fromRGB(105, 110, 120), Glare = 0, Haze = 2.4},
+            clouds = {Cover = 0.85, Density = 0.8, Color = Color3.fromRGB(125, 130, 140)},
+            cc = {Brightness = -0.03, Contrast = 0.08, Saturation = -0.25, TintColor = Color3.fromRGB(220, 230, 245)},
+            bright = 0.55, ambient = Color3.fromRGB(75, 82, 95), amb = 0.5, exposure = -0.2,
+        },
+        { -- 2: гроза
+            rate = 1500, splash = 90, wind = 14, vol = 0.9, storm = true,
+            atm = {Density = 0.5, Offset = 0.1, Color = Color3.fromRGB(95, 100, 112), Decay = Color3.fromRGB(60, 64, 72), Glare = 0, Haze = 3.2},
+            clouds = {Cover = 1, Density = 1, Color = Color3.fromRGB(70, 72, 80)},
+            cc = {Brightness = -0.08, Contrast = 0.12, Saturation = -0.35, TintColor = Color3.fromRGB(200, 208, 225)},
+            bright = 0.3, ambient = Color3.fromRGB(45, 50, 62), amb = 0.7, exposure = -0.4,
+        },
+    }
+
+    local function tw(inst, props, t)
+        pcall(function() TweenService:Create(inst, TweenInfo.new(t or 2, Enum.EasingStyle.Sine), props):Play() end)
+    end
+    local function folder()
+        local f = workspace.Terrain:FindFirstChild("MWWeather")
+        if not f then
+            f = Instance.new("Folder")
+            f.Name = "MWWeather"
+            f.Parent = workspace.Terrain
+        end
+        return f
+    end
+    local function ghost(p)
+        p.Anchored = true p.CanCollide = false p.CanQuery = false p.CanTouch = false
+        p.CastShadow = false p.Massless = true
+    end
+
+    ---------------- объекты погоды ----------------
+    local rainPart, rainEm, rainSnd, cc, atm, clouds, splashPool, splashI
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+    local function makeRain(f)
+        rainPart = Instance.new("Part")
+        rainPart.Name = "MWRain"
+        rainPart.Size = Vector3.new(120, 1, 120)
+        rainPart.Transparency = 1
+        ghost(rainPart)
+        rainPart.Parent = f
+        rainEm = Instance.new("ParticleEmitter")
+        rainEm.Texture = SMOKE
+        rainEm.Orientation = Enum.ParticleOrientation.VelocityParallel
+        rainEm.EmissionDirection = Enum.NormalId.Bottom
+        rainEm.Lifetime = NumberRange.new(1.3, 1.4)
+        rainEm.Speed = NumberRange.new(95, 115)
+        rainEm.Size = NumberSequence.new(2.6)
+        rainEm.Squash = NumberSequence.new(0.88) -- тонкие вытянутые капли; если выглядят толстыми, увеличь до 0.95
+        rainEm.Transparency = NumberSequence.new(0.55)
+        rainEm.Color = ColorSequence.new(Color3.fromRGB(205, 220, 240))
+        rainEm.LightEmission = 0.15
+        rainEm.LightInfluence = 0.7
+        rainEm.Drag = 0
+        rainEm.Acceleration = Vector3.new(4, -30, 1)
+        rainEm.Rate = 700
+        rainEm.LockedToPart = false
+        rainEm.Parent = rainPart
+
+        rainSnd = Instance.new("Sound")
+        rainSnd.Name = "MWRainSnd"
+        rainSnd.SoundId = RAIN_SOUND
+        rainSnd.Looped = true
+        rainSnd.Volume = 0
+        rainSnd.Parent = SoundService
+        pcall(function() rainSnd:Play() end)
+
+        -- пул «брызг»: блик + капельки при ударе о землю
+        local holder = Instance.new("Part")
+        holder.Name = "MWSplashes"
+        holder.Size = Vector3.new(1, 1, 1)
+        holder.Transparency = 1
+        ghost(holder)
+        holder.Parent = f
+        splashPool, splashI = {}, 0
+        for i = 1, 36 do
+            local a = Instance.new("Attachment")
+            a.Parent = holder
+            local glint = Instance.new("ParticleEmitter")
+            glint.Texture = SPARK
+            glint.Enabled = false
+            glint.Rate = 0
+            glint.Speed = NumberRange.new(0, 0)
+            glint.Lifetime = NumberRange.new(0.25, 0.4)
+            glint.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.3, 0.75), NumberSequenceKeypoint.new(1, 0)})
+            glint.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 1)})
+            glint.Color = ColorSequence.new(Color3.fromRGB(225, 238, 255))
+            glint.LightEmission = 1
+            glint.LockedToPart = false
+            glint.Rotation = NumberRange.new(0, 360)
+            glint.RotSpeed = NumberRange.new(-120, 120)
+            glint.Parent = a
+            local drops = Instance.new("ParticleEmitter")
+            drops.Texture = SPARK
+            drops.Enabled = false
+            drops.Rate = 0
+            drops.EmissionDirection = Enum.NormalId.Top
+            drops.SpreadAngle = Vector2.new(70, 70)
+            drops.Speed = NumberRange.new(4, 9)
+            drops.Acceleration = Vector3.new(0, -45, 0)
+            drops.Lifetime = NumberRange.new(0.3, 0.5)
+            drops.Size = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.14), NumberSequenceKeypoint.new(1, 0.04)})
+            drops.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.2), NumberSequenceKeypoint.new(1, 1)})
+            drops.Color = ColorSequence.new(Color3.fromRGB(200, 220, 245))
+            drops.LightEmission = 0.6
+            drops.LockedToPart = false
+            drops.Parent = a
+            splashPool[i] = {a, glint, drops}
+        end
+    end
+
+    local function splashAt(pos)
+        splashI = splashI % #splashPool + 1
+        local s = splashPool[splashI]
+        s[1].WorldPosition = pos
+        s[2]:Emit(1)
+        s[3]:Emit(3)
+    end
+
+    local function ripple(pos, base)
+        -- кольцо на луже: внешний светлый диск + внутренний цвета лужи, оба растут и гаснут
+        local outer = Instance.new("Part")
+        outer.Shape = Enum.PartType.Cylinder
+        outer.Material = Enum.Material.Neon
+        outer.Color = Color3.fromRGB(190, 205, 225)
+        outer.Transparency = 0.55
+        outer.Size = Vector3.new(0.03, 0.3, 0.3)
+        outer.CFrame = CFrame.new(pos + Vector3.new(0, 0.07, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+        ghost(outer)
+        outer.Parent = folder()
+        local inner = outer:Clone()
+        inner.Material = Enum.Material.Glass
+        inner.Color = base
+        inner.Transparency = 0.1
+        inner.Size = Vector3.new(0.035, 0.22, 0.22)
+        inner.CFrame = CFrame.new(pos + Vector3.new(0, 0.075, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+        inner.Parent = folder()
+        local d = 1.9 + math.random() * 0.8
+        local info = TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        TweenService:Create(outer, info, {Size = Vector3.new(0.03, d, d), Transparency = 1}):Play()
+        TweenService:Create(inner, info, {Size = Vector3.new(0.035, d * 0.78, d * 0.78), Transparency = 1}):Play()
+        Debris:AddItem(outer, 0.8)
+        Debris:AddItem(inner, 0.8)
+    end
+
+    local PUDDLE_COLOR = Color3.fromRGB(38, 48, 62)
+    local function makePuddle(pos, normal)
+        for _, p in ipairs(W.puddles) do
+            if (p.pos - pos).Magnitude < p.r + 2.5 then return end
+        end
+        if #W.puddles >= 55 then
+            local old = table.remove(W.puddles, 1)
+            if old.part then old.part:Destroy() end
+        end
+        local r = 1.5 + math.random() * 2.6
+        local part = Instance.new("Part")
+        part.Name = "MWPuddle"
+        part.Shape = Enum.PartType.Cylinder
+        part.Material = Enum.Material.Glass
+        part.Color = PUDDLE_COLOR
+        part.Reflectance = 0.45
+        part.Transparency = 1
+        part.Size = Vector3.new(0.05, 0.2, 0.2)
+        part.CFrame = CFrame.new(pos + normal * 0.04) * CFrame.Angles(0, math.random() * 6.28, math.pi / 2)
+        ghost(part)
+        part.Parent = folder()
+        TweenService:Create(part, TweenInfo.new(5, Enum.EasingStyle.Sine), {Size = Vector3.new(0.05, r * 2, r * 2), Transparency = 0.28}):Play()
+        W.puddles[#W.puddles + 1] = {pos = pos, r = r, part = part}
+    end
+
+    local function spawnSplash(cam, wet)
+        local ang, rad = math.random() * 6.2832, math.sqrt(math.random()) * 48
+        local origin = cam.CFrame.Position + Vector3.new(math.cos(ang) * rad, 70, math.sin(ang) * rad)
+        local res = workspace:Raycast(origin, Vector3.new(0, -260, 0), rayParams)
+        if not res then return end
+        local pos, n = res.Position, res.Normal
+        if res.Instance and res.Instance.Transparency >= 0.95 and res.Instance ~= workspace.Terrain then return end
+        splashAt(pos + n * 0.05)
+        if res.Material == Enum.Material.Water then
+            return
+        end
+        if n.Y > 0.92 then
+            for _, p in ipairs(W.puddles) do
+                local dx, dz = pos.X - p.pos.X, pos.Z - p.pos.Z
+                if dx * dx + dz * dz < (p.r * 0.85) ^ 2 and p.part and p.part.Transparency < 0.6 then
+                    ripple(Vector3.new(pos.X, p.pos.Y, pos.Z), PUDDLE_COLOR)
+                    return
+                end
+            end
+            if wet > 4 and math.random() < 0.1 then makePuddle(pos, n) end
+        end
+    end
+
+    ---------------- молния ----------------
+    local function lightningFlash()
+        local o = W.orig
+        if not (o and cc) then return end
+        local P = PRESETS[2]
+        cc.Brightness = 0.5
+        Lighting.Brightness = o.Brightness * 1.4
+        tw(cc, {Brightness = P.cc.Brightness}, 0.5)
+        tw(Lighting, {Brightness = o.Brightness * P.bright}, 0.5)
+    end
+    local function bolt()
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+        local ang, dist = math.random() * 6.2832, math.random(170, 420)
+        local cp = cam.CFrame.Position
+        local ground = Vector3.new(cp.X + math.cos(ang) * dist, cp.Y - 4, cp.Z + math.sin(ang) * dist)
+        local top = ground + Vector3.new(math.random(-50, 50), 300, math.random(-50, 50))
+        local pts = {top}
+        local segs = 10
+        for i = 1, segs - 1 do
+            local t = i / segs
+            local p = top:Lerp(ground, t) + Vector3.new(math.random(-18, 18), 0, math.random(-18, 18))
+            pts[#pts + 1] = p
+        end
+        pts[#pts + 1] = ground
+        local model = Instance.new("Folder")
+        model.Name = "MWBolt"
+        model.Parent = folder()
+        for i = 1, #pts - 1 do
+            local a, b = pts[i], pts[i + 1]
+            local len = (b - a).Magnitude
+            local seg = Instance.new("Part")
+            seg.Material = Enum.Material.Neon
+            seg.Color = Color3.fromRGB(225, 225, 255)
+            seg.Size = Vector3.new(2.2, 2.2, len)
+            seg.CFrame = CFrame.lookAt((a + b) / 2, b)
+            ghost(seg)
+            seg.Parent = model
+            TweenService:Create(seg, TweenInfo.new(0.45, Enum.EasingStyle.Quad), {Transparency = 1}):Play()
+        end
+        Debris:AddItem(model, 0.6)
+        lightningFlash()
+        task.delay(0.12, function() if W.on and W.sel == 2 then lightningFlash() end end)
+        task.delay(dist / 340, function()
+            if not (W.on and W.sel == 2) then return end
+            local s = Instance.new("Sound")
+            s.SoundId = THUNDER_SOUNDS[math.random(#THUNDER_SOUNDS)]
+            s.Volume = (W.indoor and 0.7 or 1.6) * math.clamp(1.2 - dist / 600, 0.35, 1)
+            s.PlaybackSpeed = 0.85 + math.random() * 0.25
+            s.Parent = SoundService
+            pcall(function() s:Play() end)
+            Debris:AddItem(s, 12)
+        end)
+    end
+
+    ---------------- применение пресета ----------------
+    local function applyPreset(i)
+        local P = PRESETS[i]
+        local o = W.orig
+        if not o then return end
+        tw(atm, P.atm, 2.5)
+        tw(clouds, P.clouds, 2.5)
+        tw(cc, P.cc, 2.5)
+        tw(Lighting, {
+            Brightness = o.Brightness * P.bright,
+            Ambient = o.Ambient:Lerp(P.ambient, P.amb),
+            OutdoorAmbient = o.OutdoorAmbient:Lerp(P.ambient, P.amb),
+            ExposureCompensation = o.ExposureCompensation + P.exposure,
+        }, 2.5)
+        rainEm.Acceleration = Vector3.new(P.wind, -30, P.wind * 0.3)
+        W.nextBolt = os.clock() + 3
+    end
+
+    local function weatherStop()
+        W.gen = W.gen + 1
+        for _, c in ipairs(W.conns) do pcall(function() c:Disconnect() end) end
+        W.conns = {}
+        local o = W.orig
+        if o then
+            for _, s in ipairs(o.skies or {}) do pcall(function() s.inst.Parent = s.parent end) end
+            pcall(function()
+                Lighting.Brightness = o.Brightness
+                Lighting.Ambient = o.Ambient
+                Lighting.OutdoorAmbient = o.OutdoorAmbient
+                Lighting.ExposureCompensation = o.ExposureCompensation
+            end)
+            for _, a in ipairs(o.atms) do pcall(function() a.Parent = Lighting end) end
+            for _, c in ipairs(o.clouds) do pcall(function() c.Enabled = true end) end
+        end
+        W.orig = nil
+        for _, n in ipairs({"MWRainCC", "MWRainAtm"}) do
+            local x = Lighting:FindFirstChild(n)
+            if x then x:Destroy() end
+        end
+        local f = workspace.Terrain:FindFirstChild("MWWeather")
+        if f then f:Destroy() end
+        local c = workspace.Terrain:FindFirstChild("MWRainClouds")
+        if c then c:Destroy() end
+        if rainSnd then pcall(function() rainSnd:Destroy() end) rainSnd = nil end
+        rainPart, rainEm, cc, atm, clouds, splashPool = nil, nil, nil, nil, nil, nil
+        W.puddles = {}
+    end
+    X.weatherClear = weatherStop
+
+    local function weatherStart()
+        weatherStop()
+        W.gen = W.gen + 1
+        local gen = W.gen
+        local o = {
+            Brightness = Lighting.Brightness, Ambient = Lighting.Ambient, OutdoorAmbient = Lighting.OutdoorAmbient,
+            ExposureCompensation = Lighting.ExposureCompensation, atms = {}, clouds = {},
+        }
+        -- чужие Atmosphere/Clouds временно убираем, чтобы наши были видны
+        for _, a in ipairs(Lighting:GetChildren()) do
+            if a:IsA("Atmosphere") then o.atms[#o.atms + 1] = a a.Parent = nil end
+        end
+        for _, c in ipairs(workspace.Terrain:GetChildren()) do
+            if c:IsA("Clouds") and c.Enabled then o.clouds[#o.clouds + 1] = c c.Enabled = false end
+        end
+        W.orig = o
+
+        atm = Instance.new("Atmosphere")
+        atm.Name = "MWRainAtm"
+        atm.Density, atm.Haze, atm.Glare = 0.1, 0.5, 0
+        atm.Parent = Lighting
+        clouds = Instance.new("Clouds")
+        clouds.Name = "MWRainClouds"
+        clouds.Cover, clouds.Density = 0.3, 0.3
+        clouds.Parent = workspace.Terrain
+        cc = Instance.new("ColorCorrectionEffect")
+        cc.Name = "MWRainCC"
+        cc.Parent = Lighting
+
+        local f = folder()
+        makeRain(f)
+        applyPreset(W.sel)
+
+        local conn
+        conn = RunService.Heartbeat:Connect(function(dt)
+            if W.gen ~= gen or not rainPart then return end
+            local cam = workspace.CurrentCamera
+            if not cam then return end
+            local P = PRESETS[W.sel]
+            local cp = cam.CFrame.Position
+            rainPart.CFrame = CFrame.new(cp + Vector3.new(0, 55, 0))
+
+            W.chk = W.chk + dt
+            if W.chk > 0.25 then
+                W.chk = 0
+                local ex = {f}
+                local ch = LocalPlayer.Character
+                if ch then ex[2] = ch end
+                rayParams.FilterDescendantsInstances = ex
+                local up = workspace:Raycast(cp, Vector3.new(0, 120, 0), rayParams)
+                W.indoor = up ~= nil and up.Instance.CanCollide and up.Instance.Transparency < 0.9
+                rainEm.Enabled = not W.indoor
+                rainEm.Rate = P.rate * (W.intensity / 100)
+                local tv = (W.indoor and P.vol * 0.35 or P.vol) * (W.intensity / 100)
+                if rainSnd then tw(rainSnd, {Volume = math.clamp(tv, 0, 1.5)}, 0.4) end
+            end
+
+            if not W.indoor then
+                W.acc = W.acc + dt * P.splash * (W.intensity / 100)
+                local n = 0
+                while W.acc >= 1 and n < 6 do
+                    W.acc = W.acc - 1
+                    n = n + 1
+                    spawnSplash(cam, os.clock() - (W.startT or 0))
+                end
+                if W.acc > 8 then W.acc = 0 end
+            end
+
+            if P.storm and os.clock() >= W.nextBolt then
+                W.nextBolt = os.clock() + 5 + math.random() * 9
+                bolt()
+            end
+        end)
+        W.startT = os.clock()
+        W.conns[#W.conns + 1] = conn
+    end
+
+    ---------------- интерфейс ----------------
+    MWV.TAB_ICON["WorldTweaks"] = "cloud"
+    local tW = addTab("WorldTweaks", ICONS.EYE)
+    tW.Section("🌧 Погода")
+    tW.Toggle("WorldTweaks: погода", false, function(v)
+        W.on = v
+        if v then weatherStart() else weatherStop() end
+    end, ICONS.EYE)
+    radioGroup(tW, "Погода: ", {"1 — Дождь", "2 — Гроза"}, 1, function(i, changed)
+        W.sel = i
+        if W.on and changed and W.orig then applyPreset(i) end
+    end, ICONS.EYE)
+    tW.Slider("Сила дождя", 20, 200, 100, "%", function(v) W.intensity = v end, 5)
+
+    X.cfgExt.weather = {
+        save = function() return {on = W.on, sel = W.sel, power = W.intensity} end,
+        load = function(t)
+            local i = math.clamp(math.floor(tonumber(t.sel) or 1), 1, 2)
+            W.sel = i
+            local r = REG["Погода: " .. ({"1 — Дождь", "2 — Гроза"})[i]]
+            if r then pcall(r.set, true, true) end
+            local s = REG["Сила дождя"]
+            if s and tonumber(t.power) then pcall(s.set, t.power) end
+            local e = REG["WorldTweaks: погода"]
+            if e then pcall(e.set, t.on and true or false, true) end
+        end,
+    }
+end
+
+--------------------------------------------------
+-- AURA: ауры (pasta PulseHub). Видны только тебе (всё создаётся на клиенте).
+--------------------------------------------------
+do
+    local A = {on = false, sel = 1, gen = 0, objs = {}, scale = 1, period = 2.6}
+    local function NS(t)
+        local k = {}
+        for i, v in ipairs(t) do k[i] = NumberSequenceKeypoint.new(v[1], v[2], v[3]) end
+        return NumberSequence.new(k)
+    end
+    local function CS(t)
+        local k = {}
+        for i, v in ipairs(t) do k[i] = ColorSequenceKeypoint.new(v[1], Color3.new(v[2], v[3], v[4])) end
+        return ColorSequence.new(k)
+    end
+    local function NR(a, b) return NumberRange.new(a, b) end
+    local function V2(x, y) return Vector2.new(x, y) end
+    local function V3(x, y, z) return Vector3.new(x, y, z) end
+    local function E(name, v)
+        for _, it in ipairs(Enum[name]:GetEnumItems()) do
+            if it.Value == v then return it end
+        end
+    end
+    local function scaleNS(seq, s)
+        local k = {}
+        for i, p in ipairs(seq.Keypoints) do k[i] = NumberSequenceKeypoint.new(p.Time, p.Value * s, p.Envelope * s) end
+        return NumberSequence.new(k)
+    end
+
+    -- Данные эффектов (PulseVFX): part R = HumanoidRootPart, T = торс. ec/ed = количество/задержка вспышки (Emit)
+    local DATA = {
+        {name = "Frozen Bloom", list = {
+        {k="pe",part="T",att=nil,ec=nil,ed=0,p={Acceleration=V3(0,0,0),Brightness=5,Color=CS{{0,0.42353,0.72549,0.97647},{1,0.42353,0.72549,0.97647}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",2),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.5,1),LightEmission=1,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",0),Rate=4,RotSpeed=NR(0,0),Rotation=NR(-180,180),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,0,0},{0.091487,1.4689,0},{0.23507,2.8814,0},{1,4.6328,0}},Speed=NR(0.070779,0.070779),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://14919880888",TimeScale=1,Transparency=NS{{0,1,0},{0.063802,0.55572,0},{0.16406,0.45633,0},{0.50391,0.33735,0},{0.82675,0.64375,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=-2}},
+        {k="pe",part="T",att=nil,ec=nil,ed=0,p={Acceleration=V3(0,-4.9766,0),Brightness=4.63,Color=CS{{0,0.51373,0.93333,0.93725},{0.56228,0.42353,0.72549,0.97647},{1,0.2902,0.54902,0.96863}},Drag=3,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(0,0),FlipbookLayout=E("ParticleFlipbookLayout",2),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=true,Lifetime=NR(1,2.4),LightEmission=0,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",0),Rate=15,RotSpeed=NR(-130,140),Rotation=NR(-180,165),Shape=E("ParticleEmitterShape",1),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,0.4497,0.1499},{1,0.48717,0.22485}},Speed=NR(4.9766,9.9533),SpreadAngle=V2(40,40),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://16879659749",TimeScale=1,Transparency=NS{{0,1,0},{0.16871,0.1257,0},{0.5184,0,0},{0.88957,0.080675,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=-1}},
+        {k="pe",part="T",att=nil,ec=nil,ed=0,p={Acceleration=V3(0,-2.88,0),Brightness=4.63,Color=CS{{0,0.51373,0.93333,0.93725},{0.56228,0.42353,0.72549,0.97647},{1,0.2902,0.54902,0.96863}},Drag=3,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(0,0),FlipbookLayout=E("ParticleFlipbookLayout",1),FlipbookMode=E("ParticleFlipbookMode",2),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=true,Lifetime=NR(1,2.4),LightEmission=0,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",0),Rate=15,RotSpeed=NR(-130,140),Rotation=NR(-180,165),Shape=E("ParticleEmitterShape",1),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,0.26024,0.086748},{1,0.28193,0.13012}},Speed=NR(2.88,5.76),SpreadAngle=V2(40,40),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://18671876469",TimeScale=1,Transparency=NS{{0,1,0},{0.16871,0.1257,0},{0.5184,0,0},{0.88957,0.080675,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=-1}},
+        {k="pe",part="T",att=nil,ec=nil,ed=0,p={Acceleration=V3(0,6.912,0),Brightness=4.63,Color=CS{{0,0.51373,0.93333,0.93725},{0.56228,0.42353,0.72549,0.97647},{1,0.2902,0.54902,0.96863}},Drag=6,EmissionDirection=E("NormalId",5),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",0),FlipbookMode=E("ParticleFlipbookMode",0),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.5,1.2),LightEmission=0,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",0),Rate=15,RotSpeed=NR(-360,360),Rotation=NR(-180,180),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,0.13012,0.052048},{1,0.15615,0.15615}},Speed=NR(5.184,13.824),SpreadAngle=V2(180,180),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://12872162107",TimeScale=1,Transparency=NS{{0,1,0},{0.039877,0,0},{0.45395,0.05,0},{0.77083,0.28125,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="att",id=1,part="R",pos=V3(0,-2.8479,0)},
+        {k="pe",part="R",att=1,ec=1,ed=0,p={Acceleration=V3(0,0,0),Brightness=15,Color=CS{{0,0.51373,0.93333,0.93725},{0.45156,0.42353,0.72549,0.97647},{1,0.42353,0.72549,0.97647}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(30,30),FlipbookLayout=E("ParticleFlipbookLayout",2),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.5,1),LightEmission=0,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=3,RotSpeed=NR(0,0),Rotation=NR(-1000,1000),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,1.4785,0},{1,5.0332,0}},Speed=NR(0.00050332,0.00050332),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://13992197350",TimeScale=0.6,Transparency=NS{{0,0,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=1,ec=nil,ed=0,p={Acceleration=V3(0,0,0),Brightness=15,Color=CS{{0,0.51373,0.93333,0.93725},{0.45156,0.42353,0.72549,0.97647},{1,0.42353,0.72549,0.97647}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",3),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(1,2),LightEmission=0,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=3,RotSpeed=NR(0,0),Rotation=NR(-180,180),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,1.0192,0},{0.28208,1.9478,0},{1,3.6239,0}},Speed=NR(0.0052184,0.0052184),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://76951334461630",TimeScale=0.6,Transparency=NS{{0,0,0},{0.35526,0.0875,0},{0.51535,0.26875,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=1,ec=nil,ed=0,p={Acceleration=V3(0,0,0),Brightness=15,Color=CS{{0,0.51373,0.93333,0.93725},{0.45156,0.42353,0.72549,0.97647},{1,0.42353,0.72549,0.97647}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",3),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(1,2),LightEmission=0,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=3,RotSpeed=NR(0,0),Rotation=NR(-180,180),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,1.5288,0},{0.28208,2.9218,0},{1,5.4358,0}},Speed=NR(0.0078276,0.0078276),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://76951334461630",TimeScale=0.6,Transparency=NS{{0,0,0},{0.35526,0.0875,0},{0.51535,0.26875,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        }},
+        {name = "Magic Aura", list = {
+        {k="att",id=19,part="R",pos=V3(0,0,0)},
+        {k="att",id=20,part="R",pos=V3(0,-3,0)},
+        {k="pe",part="R",att=20,ec=nil,ed=0,p={Acceleration=V3(0,0,0),Brightness=5,Color=CS{{0,0.81961,0.4549,1},{1,0.81961,0.4549,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",0),FlipbookMode=E("ParticleFlipbookMode",0),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(1,1),LightEmission=1,LightInfluence=0,LockedToPart=true,Orientation=E("ParticleOrientation",3),Rate=1.5,RotSpeed=NR(0,0),Rotation=NR(0,0),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,0,0},{1,3.1553,0}},Speed=NR(0.001,0.001),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://16956569427",TimeScale=1,Transparency=NS{{0,1,0},{0.29302,0,0},{0.49689,0,0},{0.70076,0,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=20,ec=nil,ed=0,p={Acceleration=V3(0,0,0),Brightness=5,Color=CS{{0,0.81961,0.4549,1},{1,0.81961,0.4549,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",0),FlipbookMode=E("ParticleFlipbookMode",0),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(1,1),LightEmission=1,LightInfluence=0,LockedToPart=true,Orientation=E("ParticleOrientation",3),Rate=1.5,RotSpeed=NR(0,0),Rotation=NR(0,0),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,4.2,0},{1,4.2,0}},Speed=NR(0.001,0.001),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://14591895021",TimeScale=1,Transparency=NS{{0,1,0},{0.49689,0,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=20,ec=nil,ed=0,p={Acceleration=V3(0,0,0),Brightness=5,Color=CS{{0,0.81961,0.4549,1},{1,0.81961,0.4549,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",0),FlipbookMode=E("ParticleFlipbookMode",0),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(1,1),LightEmission=1,LightInfluence=0,LockedToPart=true,Orientation=E("ParticleOrientation",3),Rate=1.5,RotSpeed=NR(0,0),Rotation=NR(0,0),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,3.5,0},{1,3.5,0}},Speed=NR(0.001,0.001),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://16956497860",TimeScale=1,Transparency=NS{{0,1,0},{0.49689,0,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="att",id=21,part="R",pos=V3(0,-2.5,-3.7506)},
+        {k="beam",a0=21,a1=22,p={Brightness=5,Color=CS{{0,0.81961,0.4549,1},{1,0.81961,0.4549,1}},CurveSize0=-5,CurveSize1=5,Enabled=true,FaceCamera=false,LightEmission=1,LightInfluence=0,Segments=50,Texture="rbxassetid://12781812529",TextureLength=1,TextureMode=E("TextureMode",0),TextureSpeed=1,Transparency=NS{{0,0.5,0},{1,0.5,0}},Width0=7.5,Width1=7.5,ZOffset=0}},
+        {k="beam",a0=22,a1=21,p={Brightness=5,Color=CS{{0,0.81961,0.4549,1},{1,0.81961,0.4549,1}},CurveSize0=5,CurveSize1=-5,Enabled=true,FaceCamera=false,LightEmission=1,LightInfluence=0,Segments=50,Texture="rbxassetid://12781812529",TextureLength=1,TextureMode=E("TextureMode",0),TextureSpeed=1,Transparency=NS{{0,0.5,0},{1,0.5,0}},Width0=7.5,Width1=7.5,ZOffset=0}},
+        {k="att",id=22,part="R",pos=V3(0,-2.5,3.7494)},
+        {k="att",id=23,part="R",pos=V3(-1.5,-3,-2.2506)},
+        {k="beam",a0=23,a1=24,p={Brightness=5,Color=CS{{0,0.81961,0.4549,1},{1,0.81961,0.4549,1}},CurveSize0=0,CurveSize1=0,Enabled=true,FaceCamera=true,LightEmission=1,LightInfluence=0,Segments=50,Texture="rbxassetid://3029306948",TextureLength=1,TextureMode=E("TextureMode",0),TextureSpeed=1,Transparency=NS{{0,0,0},{0.70056,0,0},{1,1,0}},Width0=2,Width1=2,ZOffset=0}},
+        {k="att",id=24,part="R",pos=V3(-1.5,-2.3842e-07,-2.2506)},
+        {k="att",id=25,part="R",pos=V3(2,2,-1.2506)},
+        {k="att",id=26,part="R",pos=V3(2,-3,-1.2506)},
+        {k="beam",a0=26,a1=25,p={Brightness=5,Color=CS{{0,0.81961,0.4549,1},{1,0.81961,0.4549,1}},CurveSize0=0,CurveSize1=0,Enabled=true,FaceCamera=true,LightEmission=1,LightInfluence=0,Segments=50,Texture="rbxassetid://3029306948",TextureLength=1,TextureMode=E("TextureMode",0),TextureSpeed=1,Transparency=NS{{0,0,0},{0.70056,0,0},{1,1,0}},Width0=2,Width1=2,ZOffset=0}},
+        {k="att",id=27,part="R",pos=V3(1,1.5,1.7494)},
+        {k="att",id=28,part="R",pos=V3(1,-3,1.7494)},
+        {k="beam",a0=28,a1=27,p={Brightness=5,Color=CS{{0,0.81961,0.4549,1},{1,0.81961,0.4549,1}},CurveSize0=0,CurveSize1=0,Enabled=true,FaceCamera=true,LightEmission=1,LightInfluence=0,Segments=50,Texture="rbxassetid://3029306948",TextureLength=1,TextureMode=E("TextureMode",0),TextureSpeed=1,Transparency=NS{{0,0,0},{0.70056,0,0},{1,1,0}},Width0=2,Width1=2,ZOffset=0}},
+        {k="att",id=29,part="R",pos=V3(-2,0.5,0.74935)},
+        {k="att",id=30,part="R",pos=V3(-2,-3,0.74935)},
+        {k="beam",a0=30,a1=29,p={Brightness=5,Color=CS{{0,0.81961,0.4549,1},{1,0.81961,0.4549,1}},CurveSize0=0,CurveSize1=0,Enabled=true,FaceCamera=true,LightEmission=1,LightInfluence=0,Segments=50,Texture="rbxassetid://3029306948",TextureLength=1,TextureMode=E("TextureMode",0),TextureSpeed=1,Transparency=NS{{0,0,0},{0.70056,0,0},{1,1,0}},Width0=2,Width1=2,ZOffset=0}},
+        }},
+        {name = "Water Vortex", period = 2.8, list = {
+        {k="att",id=1,part="R",pos=V3(0,-3,0)},
+        {k="pe",part="R",att=1,ec=1,ed=0,p={Acceleration=V3(0,0,0),Brightness=2,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",0),FlipbookMode=E("ParticleFlipbookMode",0),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.4,0.4),LightEmission=-1,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,0,0},{0.036115,9.6988,0},{0.12578,16.076,0},{0.24657,17.405,0},{0.48817,18.6,0},{0.7995,19.929,0},{1,20.726,0}},Speed=NR(0.021258,0.021258),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://13405951462",TimeScale=1,Transparency=NS{{0,0,0},{0.18774,0,0},{0.2816,0.1375,0},{0.42678,0.5,0},{0.58824,0.75,0},{0.78849,0.86875,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=1,ec=1,ed=0,p={Acceleration=V3(0,0,0),Brightness=0.3,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",0),FlipbookMode=E("ParticleFlipbookMode",0),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.2,0.2),LightEmission=1,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,15.746,0},{0.1,17.471,0},{0.2,18.71,0},{0.3,19.71,0},{0.4,20.551,0},{0.5,21.271,0},{0.6,21.892,0},{0.7,22.429,0},{0.8,22.891,0},{0.9,23.286,0},{1,23.62,0},{1,23.62,0}},Speed=NR(0.013947,0.013947),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://8943878058",TimeScale=1,Transparency=NS{{0,0,0},{0.18774,0,0},{0.2816,0.1375,0},{0.42678,0.5,0},{0.58824,0.75,0},{0.78849,0.86875,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=1,ec=1,ed=0.1,p={Acceleration=V3(0,0,0),Brightness=2,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",0),FlipbookMode=E("ParticleFlipbookMode",0),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.2,0.2),LightEmission=-1,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,0,0},{0.036115,10.104,0},{0.12578,16.747,0},{0.24657,18.131,0},{0.48817,19.377,0},{0.7995,20.761,0},{1,21.591,0}},Speed=NR(0.022145,0.022145),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://4609193944",TimeScale=1,Transparency=NS{{0,0,0},{0.18774,0,0},{0.2816,0.1375,0},{0.42678,0.5,0},{0.58824,0.75,0},{0.78849,0.86875,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=1,ec=1,ed=0.1,p={Acceleration=V3(0,0,0),Brightness=3,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",2),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.4,0.4),LightEmission=-1,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,15.746,0},{0.1,17.471,0},{0.2,18.71,0},{0.3,19.71,0},{0.4,20.551,0},{0.5,21.271,0},{0.6,21.892,0},{0.7,22.429,0},{0.8,22.891,0},{0.9,23.286,0},{1,23.62,0},{1,23.62,0}},Speed=NR(0.013947,0.013947),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://14312599234",TimeScale=1,Transparency=NS{{0,0,0},{1,0,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=1,ec=3,ed=0.1,p={Acceleration=V3(0,0,0),Brightness=2,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",2),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.3,0.45),LightEmission=-1,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,8,12},{0.1,11.504,12},{0.2,14.022,12},{0.3,16.055,12},{0.4,17.765,12},{0.5,19.228,12},{0.6,20.49,12},{0.7,21.58,12},{0.8,22.519,12},{0.9,23.322,12},{1,24,12},{1,24,12}},Speed=NR(0.015342,0.015342),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://14002381549",TimeScale=1,Transparency=NS{{0,1,0},{0.10889,0,0},{1,0,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=1,ec=3,ed=0.1,p={Acceleration=V3(0,0,0),Brightness=2,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",2),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.3,0.45),LightEmission=0,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,12,8},{0.1,16.38,8},{0.2,19.527,8},{0.3,22.069,8},{0.4,24.206,8},{0.5,26.035,8},{0.6,27.612,8},{0.7,28.975,8},{0.8,30.149,8},{0.9,31.153,8},{1,32,8},{1,32,8}},Speed=NR(0.018564,0.018564),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://17256185841",TimeScale=1,Transparency=NS{{0,1,0},{0.10889,0,0},{1,0,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=1,ec=3,ed=0,p={Acceleration=V3(0,0,0),Brightness=2,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",2),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.15,0.2),LightEmission=-1,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,7.8408,11.761},{0.1,11.275,11.761},{0.2,13.743,11.761},{0.3,15.736,11.761},{0.4,17.411,11.761},{0.5,18.845,11.761},{0.6,20.082,11.761},{0.7,21.151,11.761},{0.8,22.071,11.761},{0.9,22.858,11.761},{1,23.522,11.761},{1,23.522,11.761}},Speed=NR(0.015037,0.015037),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://15314598587",TimeScale=1,Transparency=NS{{0,1,0},{0.10889,0,0},{1,0,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=1,ec=3,ed=0,p={Acceleration=V3(0,0,0),Brightness=2,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",2),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.2,0.3),LightEmission=0,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",0),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,0),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,8.748,0},{0.1,11.941,0},{0.2,14.236,0},{0.3,16.088,0},{0.4,17.646,0},{0.5,18.979,0},{0.6,20.129,0},{0.7,21.123,0},{0.8,21.979,0},{0.9,22.71,0},{1,23.328,0},{1,23.328,0}},Speed=NR(0.0088789,0.0088789),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://11846119288",TimeScale=1,Transparency=NS{{0,1,0},{0.10889,0,0},{1,0,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=1,ec=1,ed=0,p={Acceleration=V3(0,0,0),Brightness=0.5,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",0),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.4,0.4),LightEmission=0,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,12,0},{0.1,16.38,0},{0.2,19.527,0},{0.3,22.069,0},{0.4,24.206,0},{0.5,26.035,0},{0.6,27.612,0},{0.7,28.975,0},{0.8,30.149,0},{0.9,31.153,0},{1,32,0},{1,32,0}},Speed=NR(0.015037,0.015037),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://867619398",TimeScale=1,Transparency=NS{{0,1,0},{0.10889,0,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=1,ec=1,ed=0,p={Acceleration=V3(0,0,0),Brightness=2,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",0),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.35,0.35),LightEmission=0,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",0),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,0),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,10.8,0},{0.1,14.742,0},{0.2,17.575,0},{0.3,19.862,0},{0.4,21.785,0},{0.5,23.431,0},{0.6,24.851,0},{0.7,26.078,0},{0.8,27.134,0},{0.9,28.037,0},{1,28.8,0},{1,28.8,0}},Speed=NR(0.013533,0.013533),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0.9375,0}},Texture="rbxassetid://867619398",TimeScale=1,Transparency=NS{{0,1,0},{0.10889,0,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="att",id=2,part="R",pos=V3(0,-3,0)},
+        {k="pe",part="R",att=2,ec=4,ed=0.1,p={Acceleration=V3(0,0,0),Brightness=2,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",2),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.1,0.15),LightEmission=-1,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",0),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,14.172,0},{0.1,15.724,0},{0.2,16.839,0},{0.3,17.739,0},{0.4,18.496,0},{0.5,19.144,0},{0.6,19.703,0},{0.7,20.186,0},{0.8,20.602,0},{0.9,20.957,0},{1,21.258,0},{1,21.258,0}},Speed=NR(0.012552,0.012552),SpreadAngle=V2(0,0),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://14621031119",TimeScale=1,Transparency=NS{{0,0,0},{1,0,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=2,ec=4,ed=0,p={Acceleration=V3(0,0,0),Brightness=2,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",2),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.15,0.25),LightEmission=-1,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",0),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,14.172,0},{0.1,15.724,0},{0.2,16.839,0},{0.3,17.739,0},{0.4,18.496,0},{0.5,19.144,0},{0.6,19.703,0},{0.7,20.186,0},{0.8,20.602,0},{0.9,20.957,0},{1,21.258,0},{1,21.258,0}},Speed=NR(80,160),SpreadAngle=V2(15,15),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://16030554296",TimeScale=1,Transparency=NS{{0,0,0},{1,0,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=2,ec=8,ed=0,p={Acceleration=V3(0,0,0),Brightness=2,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=15,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",2),FlipbookMode=E("ParticleFlipbookMode",1),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.15,0.5),LightEmission=-1,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",0),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,9.2981,0},{0.1,10.316,0},{0.2,11.048,0},{0.3,11.639,0},{0.4,12.135,0},{0.5,12.561,0},{0.6,12.927,0},{0.7,13.244,0},{0.8,13.517,0},{0.9,13.75,0},{1,13.947,0},{1,13.947,0}},Speed=NR(52.488,104.98),SpreadAngle=V2(15,15),Squash=NS{{0,0,0},{1,0,0.675}},Texture="rbxassetid://12828727111",TimeScale=1,Transparency=NS{{0,0.70625,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="att",id=3,part="R",pos=V3(0,-3,0)},
+        {k="pe",part="R",att=3,ec=22,ed=0.05,p={Acceleration=V3(0,0,0),Brightness=1,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=5,EmissionDirection=E("NormalId",3),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(6,6),FlipbookLayout=E("ParticleFlipbookLayout",3),FlipbookMode=E("ParticleFlipbookMode",0),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=true,Lifetime=NR(1,2),LightEmission=0,LightInfluence=1,LockedToPart=false,Orientation=E("ParticleOrientation",0),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,9.4478,7.0859},{0.1,10.482,7.0859},{0.2,11.226,7.0859},{0.3,11.826,7.0859},{0.4,12.331,7.0859},{0.5,12.763,7.0859},{0.6,13.135,7.0859},{0.7,13.457,7.0859},{0.8,13.735,7.0859},{0.9,13.972,7.0859},{1,14.172,7.0859},{1,14.172,7.0859}},Speed=NR(47.239,141.72),SpreadAngle=V2(0,360),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://10034873151",TimeScale=1,Transparency=NS{{0,1,0},{0.015019,0.85625,0.0625},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=3,ec=3,ed=0,p={Acceleration=V3(0,0,0),Brightness=1,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",0),FlipbookMode=E("ParticleFlipbookMode",0),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.5,1.2),LightEmission=0.2,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,13.2,13.2},{0.1,18.018,13.2},{0.2,21.48,13.2},{0.3,24.276,13.2},{0.4,26.626,13.2},{0.5,28.638,13.2},{0.6,30.373,13.2},{0.7,31.873,13.2},{0.8,33.164,13.2},{0.9,34.268,13.2},{1,35.2,13.2},{1,35.2,13.2}},Speed=NR(0.028294,0.028294),SpreadAngle=V2(15,15),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://13405951462",TimeScale=1,Transparency=NS{{0,0,0},{0.15019,0.38125,0},{0.23279,0.69375,0},{0.3617,0.90625,0},{0.5607,0.93125,0},{0.76721,0.9375,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=3,ec=3,ed=0,p={Acceleration=V3(0,0,0),Brightness=1,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",0),FlipbookMode=E("ParticleFlipbookMode",0),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(0.1,0.6),LightEmission=0,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,13.2,13.2},{0.1,18.018,13.2},{0.2,21.48,13.2},{0.3,24.276,13.2},{0.4,26.626,13.2},{0.5,28.638,13.2},{0.6,30.373,13.2},{0.7,31.873,13.2},{0.8,33.164,13.2},{0.9,34.268,13.2},{1,35.2,13.2},{1,35.2,13.2}},Speed=NR(0.028294,0.028294),SpreadAngle=V2(15,15),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://13405951462",TimeScale=1,Transparency=NS{{0,0,0},{0.17397,0.25625,0},{0.25282,0.475,0},{0.39299,0.7375,0},{0.602,0.8375,0},{0.77597,0.90625,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=3,ec=22,ed=0.05,p={Acceleration=V3(0,-40,0),Brightness=1,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=5,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(6,6),FlipbookLayout=E("ParticleFlipbookLayout",3),FlipbookMode=E("ParticleFlipbookMode",0),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=true,Lifetime=NR(1,2),LightEmission=0,LightInfluence=1,LockedToPart=false,Orientation=E("ParticleOrientation",0),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,9.4478,7.0859},{0.1,10.482,7.0859},{0.2,11.226,7.0859},{0.3,11.826,7.0859},{0.4,12.331,7.0859},{0.5,12.763,7.0859},{0.6,13.135,7.0859},{0.7,13.457,7.0859},{0.8,13.735,7.0859},{0.9,13.972,7.0859},{1,14.172,7.0859},{1,14.172,7.0859}},Speed=NR(47.239,141.72),SpreadAngle=V2(0,35),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://10034873151",TimeScale=1,Transparency=NS{{0,1,0},{0.0087609,0.925,0.0625},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=3,ec=2,ed=0.1,p={Acceleration=V3(0,0,0),Brightness=1,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",0),FlipbookMode=E("ParticleFlipbookMode",0),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(1,4),LightEmission=0.8,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=5,RotSpeed=NR(0,0),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,16,8},{0.1,23.008,8},{0.2,28.044,8},{0.3,32.111,8},{0.4,35.529,8},{0.5,38.455,8},{0.6,40.979,8},{0.7,43.16,8},{0.8,45.038,8},{0.9,46.644,8},{1,48,8},{1,48,8}},Speed=NR(0.028294,0.028294),SpreadAngle=V2(15,15),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://13405951462",TimeScale=1,Transparency=NS{{0,0,0},{0.17397,0.25625,0},{0.25282,0.475,0},{0.39299,0.7375,0},{0.602,0.8375,0},{0.77597,0.90625,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        {k="pe",part="R",att=3,ec=3,ed=0.1,p={Acceleration=V3(0,0,0),Brightness=0.1,Color=CS{{0,0.66667,1,1},{1,0.66667,1,1}},Drag=0,EmissionDirection=E("NormalId",1),Enabled=true,FlipbookBlendFrames=true,FlipbookFramerate=NR(1,1),FlipbookLayout=E("ParticleFlipbookLayout",0),FlipbookMode=E("ParticleFlipbookMode",0),FlipbookSizeX=1,FlipbookSizeY=1,FlipbookStartRandom=false,Lifetime=NR(1,4),LightEmission=1,LightInfluence=0,LockedToPart=false,Orientation=E("ParticleOrientation",3),Rate=5,RotSpeed=NR(-30,30),Rotation=NR(0,360),Shape=E("ParticleEmitterShape",0),ShapeInOut=E("ParticleEmitterShapeInOut",0),ShapePartial=1,ShapeStyle=E("ParticleEmitterShapeStyle",0),Size=NS{{0,16,8},{0.1,23.008,8},{0.2,28.044,8},{0.3,32.111,8},{0.4,35.529,8},{0.5,38.455,8},{0.6,40.979,8},{0.7,43.16,8},{0.8,45.038,8},{0.9,46.644,8},{1,48,8},{1,48,8}},Speed=NR(0.028294,0.028294),SpreadAngle=V2(25,25),Squash=NS{{0,0,0},{1,0,0}},Texture="rbxassetid://12685367098",TimeScale=1,Transparency=NS{{0,0,0},{0.17397,0.25625,0},{0.25282,0.475,0},{0.39299,0.7375,0},{0.602,0.8375,0},{0.77597,0.90625,0},{1,1,0}},VelocityInheritance=0,WindAffectsDrag=false,ZOffset=0}},
+        }},
+    }
+
+    local function clear()
+        A.gen = A.gen + 1
+        for _, o in ipairs(A.objs) do pcall(function() o:Destroy() end) end
+        A.objs = {}
+    end
+
+    local function build(idx)
+        clear()
+        local gen = A.gen
+        local ch = LocalPlayer.Character
+        local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+        if not hrp then return end
+        local parts = {
+            R = hrp,
+            T = ch:FindFirstChild("UpperTorso") or ch:FindFirstChild("Torso") or hrp,
+        }
+        local def = DATA[idx]
+        local atts, bursts = {}, {}
+        local s = A.scale
+        for _, e in ipairs(def.list) do
+            if e.k == "att" then
+                local a = Instance.new("Attachment")
+                a.Name = "MWAura"
+                a.Position = e.pos * s
+                a.Parent = parts[e.part]
+                atts[e.id] = a
+                A.objs[#A.objs + 1] = a
+            elseif e.k == "pe" then
+                local pe = Instance.new("ParticleEmitter")
+                pe.Name = "MWAura"
+                for k, v in pairs(e.p) do
+                    if k == "Size" then v = scaleNS(v, s) end
+                    pcall(function() pe[k] = v end)
+                end
+                if e.ec then
+                    pe.Enabled = false
+                    bursts[#bursts + 1] = {em = pe, ec = e.ec, ed = e.ed or 0}
+                end
+                pe.Parent = e.att and atts[e.att] or parts[e.part]
+                A.objs[#A.objs + 1] = pe
+            elseif e.k == "beam" then
+                local b = Instance.new("Beam")
+                b.Name = "MWAura"
+                for k, v in pairs(e.p) do
+                    if k == "Width0" or k == "Width1" then v = v * s end
+                    pcall(function() b[k] = v end)
+                end
+                b.Attachment0 = atts[e.a0]
+                b.Attachment1 = atts[e.a1]
+                b.Parent = parts.R
+                A.objs[#A.objs + 1] = b
+            end
+        end
+        if #bursts > 0 then
+            task.spawn(function()
+                while A.gen == gen and A.on do
+                    for _, b in ipairs(bursts) do
+                        task.delay(b.ed, function()
+                            if A.gen == gen and b.em.Parent then pcall(function() b.em:Emit(b.ec) end) end
+                        end)
+                    end
+                    task.wait(def.period or A.period)
+                end
+            end)
+        end
+    end
+    X.auraClear = function() A.on = false clear() end
+
+    -- после респавна ауру надо надеть заново
+    LocalPlayer.CharacterAdded:Connect(function()
+        if not A.on then return end
+        task.wait(1)
+        if A.on then pcall(build, A.sel) end
+    end)
+
+    MWV.TAB_ICON["Aura"] = "flame"
+    local tA = addTab("Aura", ICONS.EYE)
+    tA.Section("✨ Aura — pasta PulseHub")
+    tA.Toggle("Aura — pasta PulseHub", false, function(v)
+        A.on = v
+        if v then build(A.sel) else clear() end
+    end, ICONS.EYE)
+    local names = {}
+    for i, d in ipairs(DATA) do names[i] = d.name end
+    radioGroup(tA, "Aura: ", names, 1, function(i, changed)
+        A.sel = i
+        if A.on and changed then build(i) end
+    end, ICONS.EYE)
+    local tk = 0
+    tA.Slider("Размер ауры", 40, 200, 100, "%", function(v)
+        A.scale = v / 100
+        tk = tk + 1
+        local my = tk
+        task.delay(0.4, function()
+            if my == tk and A.on then pcall(build, A.sel) end
+        end)
+    end, 10)
+
+    X.cfgExt.aura = {
+        save = function() return {on = A.on, sel = A.sel, scale = A.scale} end,
+        load = function(t)
+            local i = math.clamp(math.floor(tonumber(t.sel) or 1), 1, #DATA)
+            A.sel = i
+            local r = REG["Aura: " .. DATA[i].name]
+            if r then pcall(r.set, true, true) end
+            local sl = REG["Размер ауры"]
+            if sl and tonumber(t.scale) then pcall(sl.set, t.scale * 100) end
+            local e = REG["Aura — pasta PulseHub"]
+            if e then pcall(e.set, t.on and true or false, true) end
+        end,
+    }
+end
+
+--------------------------------------------------
+-- WORLDPARTICLES: кастомные звёзды и молнии ⚡ летают по карте вокруг тебя. Видны только тебе.
+--------------------------------------------------
+do
+    local WP = {stars = false, thunder = false, sync = false, speed = 1, size = 1, amount = 20,
+        list = {stars = {}, thunder = {}}, conn = nil, t = 0, chk = 0, lastA = nil, lastB = nil}
+    local RAD = 110
+    local NSK = NumberSequenceKeypoint.new
+    local rnd = math.random
+
+    local function themeA()
+        local ok, c = pcall(function() return X.themeColor and X.themeColor() end)
+        return (ok and typeof(c) == "Color3") and c or Color3.fromRGB(99, 102, 241)
+    end
+    local function themeB()
+        local ok, c = pcall(function() return X.themeColor2 and X.themeColor2() end)
+        return (ok and typeof(c) == "Color3") and c or themeA()
+    end
+
+    local STAR_COLS = {Color3.fromRGB(255, 236, 160), Color3.fromRGB(190, 220, 255), Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 200, 230)}
+    local BOLT_COLS = {Color3.fromRGB(255, 222, 70), Color3.fromRGB(255, 240, 120), Color3.fromRGB(120, 200, 255)}
+
+    local function folder()
+        local f = workspace.Terrain:FindFirstChild("MWWorldParticles")
+        if not f then
+            f = Instance.new("Folder")
+            f.Name = "MWWorldParticles"
+            f.Parent = workspace.Terrain
+        end
+        return f
+    end
+
+    local function fr(parent, size, pos, col, tr, rot, round)
+        local f = Instance.new("Frame")
+        f.AnchorPoint = Vector2.new(0.5, 0.5)
+        f.Size = size
+        f.Position = pos
+        f.BackgroundColor3 = col
+        f.BackgroundTransparency = tr
+        f.BorderSizePixel = 0
+        f.Rotation = rot or 0
+        if round then
+            local c = Instance.new("UICorner")
+            c.CornerRadius = UDim.new(1, 0)
+            c.Parent = f
+        end
+        f.Parent = parent
+        return f
+    end
+    local function taper(f, rot)
+        local g = Instance.new("UIGradient")
+        g.Rotation = rot
+        g.Transparency = NumberSequence.new({NSK(0, 1), NSK(0.5, 0), NSK(1, 1)})
+        g.Parent = f
+    end
+    local CENTER = UDim2.fromScale(0.5, 0.5)
+
+    -- ===== собственная звезда: 8 лучей-иголок + ядро + многослойное свечение =====
+    local function buildStar(e, root)
+        local T = e.tinted
+        for _, g in ipairs({{1, 0.93}, {0.72, 0.86}, {0.48, 0.72}}) do
+            T[#T + 1] = {f = fr(root, UDim2.fromScale(g[1], g[1]), CENTER, Color3.new(1, 1, 1), g[2], 0, true), k = "c", b = g[2]}
+        end
+        local a = fr(root, UDim2.fromScale(1, 0.1), CENTER, Color3.new(1, 1, 1), 0, 0, true) taper(a, 0)
+        local b = fr(root, UDim2.fromScale(0.1, 1), CENTER, Color3.new(1, 1, 1), 0, 0, true) taper(b, 90)
+        local c = fr(root, UDim2.fromScale(0.62, 0.06), CENTER, Color3.new(1, 1, 1), 0, 45, true) taper(c, 0)
+        local d = fr(root, UDim2.fromScale(0.62, 0.06), CENTER, Color3.new(1, 1, 1), 0, -45, true) taper(d, 0)
+        for _, f in ipairs({a, b, c, d}) do T[#T + 1] = {f = f, k = "c", b = 0} end
+        T[#T + 1] = {f = fr(root, UDim2.fromScale(0.24, 0.24), CENTER, Color3.new(1, 1, 1), 0, 0, true), k = "w", b = 0}
+    end
+
+    -- ===== собственная молния ⚡: зигзаг из закруглённых линий + свечение + белое ядро =====
+    local function buildBolt(e, root)
+        local T = e.tinted
+        local function j() return (rnd() - 0.5) * 0.1 end
+        local pts = {Vector2.new(0.64 + j(), 0.03), Vector2.new(0.3 + j(), 0.5 + j() * 0.4), Vector2.new(0.62 + j(), 0.5 + j() * 0.4), Vector2.new(0.34 + j(), 0.97)}
+        local layers = {{0.2, 0.78, "c"}, {0.1, 0.05, "c"}, {0.04, 0, "w"}}
+        for _, ly in ipairs(layers) do
+            for i = 1, #pts - 1 do
+                local p, q = pts[i], pts[i + 1]
+                local m, d = (p + q) / 2, q - p
+                local len = d.Magnitude + ly[1] * 0.6
+                local f = fr(root, UDim2.fromScale(len, ly[1]), UDim2.fromScale(m.X, m.Y), Color3.new(1, 1, 1), ly[2], math.deg(math.atan2(d.Y, d.X)), true)
+                T[#T + 1] = {f = f, k = ly[3], b = ly[2]}
+            end
+            for i = 2, #pts - 1 do
+                local f = fr(root, UDim2.fromScale(ly[1], ly[1]), UDim2.fromScale(pts[i].X, pts[i].Y), Color3.new(1, 1, 1), ly[2], 0, true)
+                T[#T + 1] = {f = f, k = ly[3], b = ly[2]}
+            end
+        end
+    end
+
+    local function entColor(e)
+        if WP.sync then
+            return e.alt and themeB() or themeA()
+        end
+        return e.base
+    end
+    local function recolor(e)
+        local c = entColor(e)
+        local w = c:Lerp(Color3.new(1, 1, 1), 0.7)
+        for _, t in ipairs(e.tinted) do
+            t.f.BackgroundColor3 = (t.k == "w") and w or c
+        end
+        if e.light then e.light.Color = c end
+    end
+    local function applyAlpha(e, a)
+        if e.a == a then return end
+        e.a = a
+        for _, t in ipairs(e.tinted) do
+            t.f.BackgroundTransparency = 1 - (1 - t.b) * a
+        end
+    end
+    local function guiSize(e)
+        local s = (e.kind == "stars" and 3 or 5) * WP.size
+        e.gui.Size = UDim2.fromScale(s, s)
+        if e.light then e.light.Range = math.clamp(s * 3, 4, 40) end
+    end
+
+    local function spawn(kind)
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+        local c = cam.CFrame.Position
+        local part = Instance.new("Part")
+        part.Name = "MWWP"
+        part.Size = Vector3.new(0.2, 0.2, 0.2)
+        part.Transparency = 1
+        part.Anchored, part.CanCollide, part.CanQuery, part.CanTouch, part.CastShadow = true, false, false, false, false
+        local pos = c + Vector3.new(rnd(-RAD, RAD), rnd(-8, 42), rnd(-RAD, RAD))
+        part.CFrame = CFrame.new(pos)
+        local gui = Instance.new("BillboardGui")
+        gui.AlwaysOnTop = false
+        gui.LightInfluence = 0
+        gui.Brightness = 1.6
+        gui.MaxDistance = 320
+        gui.ResetOnSpawn = false
+        gui.Active = false
+        gui.Adornee = part
+        gui.Parent = part
+        local root = Instance.new("Frame")
+        root.BackgroundTransparency = 1
+        root.AnchorPoint = Vector2.new(0.5, 0.5)
+        root.Position = CENTER
+        root.Size = UDim2.fromScale(1, 1)
+        root.Parent = gui
+        local e = {kind = kind, part = part, gui = gui, root = root, tinted = {}, pos = pos,
+            h = rnd() * 6.283, turn = (rnd() - 0.5) * 0.6, ph = rnd() * 6.283, alt = rnd() < 0.5, a = -1, fl = rnd() * 0.5}
+        if kind == "stars" then
+            e.base = STAR_COLS[rnd(#STAR_COLS)]
+            e.spd = 2 + rnd() * 5
+            e.rot = (rnd() - 0.5) * 40
+            buildStar(e, root)
+        else
+            e.base = BOLT_COLS[rnd(#BOLT_COLS)]
+            e.spd = 5 + rnd() * 9
+            e.rot = (rnd() - 0.5) * 20
+            root.Rotation = rnd(-25, 25)
+            buildBolt(e, root)
+        end
+        if #WP.list[kind] < 8 then
+            local l = Instance.new("PointLight")
+            l.Brightness = kind == "stars" and 1 or 1.6
+            l.Shadows = false
+            l.Parent = part
+            e.light = l
+        end
+        part.Parent = folder()
+        guiSize(e)
+        recolor(e)
+        applyAlpha(e, 1)
+        local list = WP.list[kind]
+        list[#list + 1] = e
+    end
+
+    local function resize(kind)
+        local list = WP.list[kind]
+        local want = WP[kind] and WP.amount or 0
+        while #list > want do
+            local e = table.remove(list)
+            pcall(function() e.part:Destroy() end)
+        end
+        while #list < want do
+            local before = #list
+            spawn(kind)
+            if #list == before then break end
+        end
+    end
+
+    local function stop()
+        if WP.conn then WP.conn:Disconnect() WP.conn = nil end
+    end
+    local function update(dt)
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+        local c = cam.CFrame.Position
+        WP.t = WP.t + dt
+        local t = WP.t
+        local spd = WP.speed
+
+        WP.chk = WP.chk + dt
+        if WP.chk > 0.25 and WP.sync then
+            WP.chk = 0
+            local a, b = themeA(), themeB()
+            if a ~= WP.lastA or b ~= WP.lastB then
+                WP.lastA, WP.lastB = a, b
+                for _, k in ipairs({"stars", "thunder"}) do
+                    for _, e in ipairs(WP.list[k]) do recolor(e) end
+                end
+            end
+        end
+
+        for _, k in ipairs({"stars", "thunder"}) do
+            for _, e in ipairs(WP.list[k]) do
+                e.h = e.h + e.turn * dt
+                local v = Vector3.new(math.cos(e.h), 0, math.sin(e.h)) * (e.spd * spd)
+                local p = e.pos + v * dt
+                p = Vector3.new(p.X, p.Y + math.sin(t * 0.8 + e.ph) * 0.9 * spd * dt, p.Z)
+                local dx, dz, dy = p.X - c.X, p.Z - c.Z, p.Y - c.Y
+                if dx > RAD then p = p - Vector3.new(2 * RAD, 0, 0) elseif dx < -RAD then p = p + Vector3.new(2 * RAD, 0, 0) end
+                if dz > RAD then p = p - Vector3.new(0, 0, 2 * RAD) elseif dz < -RAD then p = p + Vector3.new(0, 0, 2 * RAD) end
+                if dy > 48 then p = p - Vector3.new(0, 62, 0) elseif dy < -14 then p = p + Vector3.new(0, 62, 0) end
+                e.pos = p
+                e.part.CFrame = CFrame.new(p)
+                if k == "stars" then
+                    e.root.Rotation = e.root.Rotation + e.rot * dt * spd
+                    local pulse = 0.82 + 0.18 * math.sin(t * 3 * math.min(spd, 3) + e.ph)
+                    e.root.Size = UDim2.fromScale(pulse, pulse)
+                    applyAlpha(e, 0.7 + 0.3 * math.sin(t * 2 + e.ph))
+                else
+                    e.root.Rotation = e.root.Rotation + e.rot * dt * spd
+                    e.fl = e.fl - dt
+                    if e.fl <= 0 then
+                        e.fl = 0.05 + rnd() * 0.5 / math.max(spd, 0.3)
+                        applyAlpha(e, rnd() < 0.35 and 0.2 or 1)
+                    end
+                end
+            end
+        end
+    end
+    local function ensure()
+        if (WP.stars or WP.thunder) and not WP.conn then
+            WP.conn = RunService.Heartbeat:Connect(function(dt) pcall(update, dt) end)
+        elseif not (WP.stars or WP.thunder) then
+            stop()
+        end
+    end
+    X.wpClear = function()
+        WP.stars, WP.thunder = false, false
+        stop()
+        local f = workspace.Terrain:FindFirstChild("MWWorldParticles")
+        if f then f:Destroy() end
+        WP.list = {stars = {}, thunder = {}}
+    end
+
+    local tk = 0
+    local function rebuildAll()
+        for _, k in ipairs({"stars", "thunder"}) do
+            for _, e in ipairs(WP.list[k]) do recolor(e) end
+        end
+    end
+
+    local tW = addTab("WorldParticles", ICONS.EYE)
+    tW.Section("✦ WorldParticles")
+    tW.Toggle("WP: Stars (звёзды)", false, function(v)
+        WP.stars = v
+        resize("stars")
+        ensure()
+    end, ICONS.EYE)
+    tW.Toggle("WP: Thunder ⚡ (молнии)", false, function(v)
+        WP.thunder = v
+        resize("thunder")
+        ensure()
+    end, ICONS.EYE)
+    tW.Toggle("WP: Sync with theme", false, function(v)
+        WP.sync = v
+        WP.lastA, WP.lastB = nil, nil
+        rebuildAll()
+    end, ICONS.EYE)
+    tW.Slider("WP: Speed", 0.1, 10, 1, "", function(v) WP.speed = v end, 0.1)
+    tW.Slider("WP: Size", 0.1, 5, 1, "", function(v)
+        WP.size = v
+        for _, k in ipairs({"stars", "thunder"}) do
+            for _, e in ipairs(WP.list[k]) do guiSize(e) end
+        end
+    end, 0.1)
+    tW.Slider("WP: Amount", 1, 50, 20, "", function(v)
+        WP.amount = math.floor(v)
+        tk = tk + 1
+        local my = tk
+        task.delay(0.3, function()
+            if my ~= tk then return end
+            resize("stars")
+            resize("thunder")
+        end)
+    end, 1)
+
+    X.cfgExt.worldparticles = {
+        save = function() return {stars = WP.stars, thunder = WP.thunder, sync = WP.sync, speed = WP.speed, size = WP.size, amount = WP.amount} end,
+        load = function(t)
+            local function set(name, v) local r = REG[name] if r and v ~= nil then pcall(r.set, v, true) end end
+            set("WP: Speed", tonumber(t.speed))
+            set("WP: Size", tonumber(t.size))
+            set("WP: Amount", tonumber(t.amount))
+            set("WP: Sync with theme", t.sync and true or false)
+            set("WP: Stars (звёзды)", t.stars and true or false)
+            set("WP: Thunder ⚡ (молнии)", t.thunder and true or false)
+        end,
+    }
+end
+
 -- Сохранение в конфиг: небо, паки анимаций, звуки
 X.cfgExt.sky = {
     save = function() return {on = sky.on, sel = sky.sel} end,
@@ -11952,6 +12953,11 @@ t5.Button("⛔ Unload (выгрузить скрипт)", function()
         pcall(anStop)
         pcall(packReset)
         pcall(skyClear)
+        pcall(X.weatherClear)
+        pcall(X.auraClear)
+        pcall(X.wpClear)
+        pcall(X.espClear)
+        pcall(X.mbClear)
         pcall(fpsBoost, false)
         pcall(function()
             local h = myHum()
@@ -12780,17 +13786,310 @@ safe("SelfChams", function()
     end)
 end)
 
+-- ===== MotionBlur =====
+safe("MotionBlur", function()
+    local mb = {on = false, power = 1, blur = nil, lastLook = nil, lastPos = nil, cur = 0}
+    MWV.TAB_ICON["MotionBlur"] = "wind"
+    local tab = addTab("MotionBlur", ICONS.EYE)
+    tab.Section("💨 MotionBlur")
+    local function clear()
+        if mb.blur then pcall(function() mb.blur:Destroy() end) mb.blur = nil end
+        mb.lastLook, mb.lastPos, mb.cur = nil, nil, 0
+    end
+    tab.Toggle("MotionBlur", false, function(v)
+        mb.on = v
+        if not v then clear() end
+    end, ICONS.EYE)
+    tab.Slider("MotionBlur: Сила", 0.1, 10, 1, "", function(v) mb.power = v end, 0.1)
+    RunService.RenderStepped:Connect(function(dt)
+        if not mb.on then return end
+        local cam = workspace.CurrentCamera
+        if not cam or dt <= 0 then return end
+        if not mb.blur or not mb.blur.Parent then
+            mb.blur = Instance.new("BlurEffect")
+            mb.blur.Name = "MWMotionBlur"
+            mb.blur.Size = 0
+            mb.blur.Parent = game:GetService("Lighting")
+        end
+        local look, pos = cam.CFrame.LookVector, cam.CFrame.Position
+        local rot, lin = 0, 0
+        if mb.lastLook then
+            rot = math.acos(math.clamp(look:Dot(mb.lastLook), -1, 1)) / dt -- рад/сек: поворот камеры
+            lin = math.min((pos - mb.lastPos).Magnitude / dt, 100) -- стадов/сек: движение камеры
+        end
+        mb.lastLook, mb.lastPos = look, pos
+        local target = math.max(rot - 0.4, 0) * 1.6 + math.max(lin - 4, 0) * 0.08
+        target = math.clamp(target * mb.power, 0, 40)
+        mb.cur = mb.cur + (target - mb.cur) * math.min(1, dt * 12)
+        mb.blur.Size = mb.cur
+    end)
+    X.mbClear = function() mb.on = false clear() end
+end)
+
+-- ===== ESP (Box / 3DBox / Fill / Corners / Name / Skeleton) =====
+safe("ESP", function()
+    local es = {box = false, box3d = false, fill = false, corners = false, name = false, skel = false, roles = true, objs = {}, gui = nil, f3 = nil}
+    MWV.TAB_ICON["ESP"] = "eye"
+    local tab = addTab("ESP", ICONS.EYE)
+    tab.Section("👁 ESP")
+    tab.Toggle("ESP: Box (2D)", false, function(v) es.box = v end, ICONS.EYE)
+    tab.Toggle("ESP: 3DBox", false, function(v) es.box3d = v end, ICONS.EYE)
+    tab.Toggle("ESP: Fill (заливка 3DBox)", false, function(v) es.fill = v end, ICONS.EYE)
+    tab.Toggle("ESP: Corners (углы 2D)", false, function(v) es.corners = v end, ICONS.EYE)
+    tab.Toggle("ESP: Name (имя)", false, function(v) es.name = v end, ICONS.EYE)
+    tab.Toggle("ESP: Skeleton", false, function(v) es.skel = v end, ICONS.EYE)
+    tab.Toggle("ESP: цвет по ролям", true, function(v) es.roles = v end, ICONS.EYE)
+
+    local R15 = {{"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"}, {"UpperTorso", "LeftUpperArm"}, {"LeftUpperArm", "LeftLowerArm"},
+        {"LeftLowerArm", "LeftHand"}, {"UpperTorso", "RightUpperArm"}, {"RightUpperArm", "RightLowerArm"}, {"RightLowerArm", "RightHand"},
+        {"LowerTorso", "LeftUpperLeg"}, {"LeftUpperLeg", "LeftLowerLeg"}, {"LeftLowerLeg", "LeftFoot"},
+        {"LowerTorso", "RightUpperLeg"}, {"RightUpperLeg", "RightLowerLeg"}, {"RightLowerLeg", "RightFoot"}}
+    local R6 = {{"Head", "Torso"}, {"Torso", "Left Arm"}, {"Torso", "Right Arm"}, {"Torso", "Left Leg"}, {"Torso", "Right Leg"}}
+    local CORN = {{0, 0, 1, 0}, {0, 0, 0, 1}, {1, 0, -1, 0}, {1, 0, 0, 1}, {0, 1, 1, 0}, {0, 1, 0, -1}, {1, 1, -1, 0}, {1, 1, 0, -1}}
+
+    local function ensureGui()
+        if es.gui and es.gui.Parent then return end
+        es.gui = makeGui("ManewareESP", 99980)
+        local f = workspace.Terrain:FindFirstChild("MWESP3D")
+        if f then f:Destroy() end
+        es.f3 = Instance.new("Folder")
+        es.f3.Name = "MWESP3D"
+        es.f3.Parent = workspace.Terrain
+        for _, o in pairs(es.objs) do o.dead = true end
+        es.objs = {}
+    end
+
+    local function frame(parent, vis)
+        local f = Instance.new("Frame")
+        f.BorderSizePixel = 0
+        f.BackgroundColor3 = Color3.new(1, 1, 1)
+        f.Visible = false
+        f.Parent = parent
+        return f
+    end
+
+    local function make(pl)
+        local o = {}
+        o.box = Instance.new("Frame")
+        o.box.BackgroundTransparency = 1
+        o.box.BorderSizePixel = 0
+        o.box.Visible = false
+        o.box.Parent = es.gui
+        o.stroke = Instance.new("UIStroke")
+        o.stroke.Thickness = 1.5
+        o.stroke.Parent = o.box
+        o.cor = {}
+        for i = 1, 8 do o.cor[i] = frame(es.gui) end
+        o.sk = {}
+        for i = 1, 14 do
+            local l = frame(es.gui)
+            l.AnchorPoint = Vector2.new(0.5, 0.5)
+            o.sk[i] = l
+        end
+        o.nm = Instance.new("TextLabel")
+        o.nm.BackgroundTransparency = 1
+        o.nm.AnchorPoint = Vector2.new(0.5, 1)
+        o.nm.Size = UDim2.fromOffset(200, 14)
+        o.nm.Font = Enum.Font.GothamBold
+        o.nm.TextSize = 13
+        o.nm.TextStrokeTransparency = 0.3
+        o.nm.Visible = false
+        o.nm.Parent = es.gui
+        o.part = Instance.new("Part")
+        o.part.Name = "MWBox3D"
+        o.part.Size = Vector3.new(3.6, 5.8, 2.2)
+        o.part.Transparency = 1
+        o.part.Anchored, o.part.CanCollide, o.part.CanQuery, o.part.CanTouch, o.part.CastShadow = true, false, false, false, false
+        o.part.Parent = es.f3
+        o.sel = Instance.new("SelectionBox")
+        o.sel.Adornee = o.part
+        o.sel.LineThickness = 0.035
+        o.sel.SurfaceTransparency = 1
+        o.sel.Visible = false
+        o.sel.Parent = o.part
+        o.fill = Instance.new("BoxHandleAdornment")
+        o.fill.Adornee = o.part
+        o.fill.Size = o.part.Size
+        o.fill.Transparency = 0.72
+        o.fill.AlwaysOnTop = true
+        o.fill.ZIndex = 1
+        o.fill.Visible = false
+        o.fill.Parent = o.part
+        return o
+    end
+
+    local function hide(o)
+        o.box.Visible = false
+        for _, c in ipairs(o.cor) do c.Visible = false end
+        for _, l in ipairs(o.sk) do l.Visible = false end
+        o.nm.Visible = false
+        o.sel.Visible = false
+        o.fill.Visible = false
+    end
+    local function destroyObj(o)
+        for _, i in ipairs({o.box, o.nm, o.part}) do pcall(function() i:Destroy() end) end
+        for _, c in ipairs(o.cor) do pcall(function() c:Destroy() end) end
+        for _, l in ipairs(o.sk) do pcall(function() l:Destroy() end) end
+    end
+
+    local function pcol(pl)
+        if es.roles then
+            local ok, c = pcall(function() return roleColor(getRole(pl)) end)
+            if ok and c then return c end
+        end
+        return themeCol()
+    end
+
+    local cx = {Vector3.new(-1, -1, -1), Vector3.new(1, -1, -1), Vector3.new(1, 1, -1), Vector3.new(-1, 1, -1),
+        Vector3.new(-1, -1, 1), Vector3.new(1, -1, 1), Vector3.new(1, 1, 1), Vector3.new(-1, 1, 1)}
+
+    local function setLine(f, a, b, th, col)
+        local d = b - a
+        f.Size = UDim2.fromOffset(d.Magnitude, th)
+        f.Position = UDim2.fromOffset((a.X + b.X) / 2, (a.Y + b.Y) / 2)
+        f.Rotation = math.deg(math.atan2(d.Y, d.X))
+        f.BackgroundColor3 = col
+        f.Visible = true
+    end
+
+    local function update(pl, o, cam)
+        local ch = pl.Character
+        local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+        local hrp = ch and ch:FindFirstChild("HumanoidRootPart")
+        if not (hum and hrp) or hum.Health <= 0 then hide(o) return end
+        local col = pcol(pl)
+
+        -- 3D: рамка и заливка (через SelectionBox/BoxHandleAdornment, Highlight не трогаем — чамсы остаются как были)
+        o.part.CFrame = hrp.CFrame * CFrame.new(0, -0.1, 0)
+        o.sel.Visible = es.box3d
+        o.sel.Color3 = col
+        o.fill.Visible = es.fill
+        o.fill.Color3 = col
+
+        if not (es.box or es.corners or es.name or es.skel) then
+            o.box.Visible = false
+            for _, c in ipairs(o.cor) do c.Visible = false end
+            for _, l in ipairs(o.sk) do l.Visible = false end
+            o.nm.Visible = false
+            return
+        end
+
+        -- границы на экране по 8 углам бокса
+        local minX, minY, maxX, maxY = math.huge, math.huge, -math.huge, -math.huge
+        local cf, sz = hrp.CFrame * CFrame.new(0, -0.1, 0), o.part.Size / 2
+        for _, c in ipairs(cx) do
+            local v = cam:WorldToViewportPoint(cf:PointToWorldSpace(c * sz))
+            if v.Z <= 0 then hide(o) o.sel.Visible = es.box3d o.fill.Visible = es.fill return end
+            minX, minY = math.min(minX, v.X), math.min(minY, v.Y)
+            maxX, maxY = math.max(maxX, v.X), math.max(maxY, v.Y)
+        end
+        local w, h = maxX - minX, maxY - minY
+
+        o.box.Visible = es.box
+        if es.box then
+            o.box.Position = UDim2.fromOffset(minX, minY)
+            o.box.Size = UDim2.fromOffset(w, h)
+            o.stroke.Color = col
+        end
+
+        local L = math.max(math.min(w, h) * 0.28, 4)
+        for i, c in ipairs(o.cor) do
+            c.Visible = es.corners
+            if es.corners then
+                local d = CORN[i]
+                local x, y = minX + w * d[1], minY + h * d[2]
+                if d[3] ~= 0 then -- горизонтальный отрезок
+                    c.Size = UDim2.fromOffset(L, 2)
+                    c.Position = UDim2.fromOffset(d[3] > 0 and x or x - L, y - (d[2] == 1 and 2 or 0))
+                else -- вертикальный отрезок
+                    c.Size = UDim2.fromOffset(2, L)
+                    c.Position = UDim2.fromOffset(x - (d[1] == 1 and 2 or 0), d[4] > 0 and y or y - L)
+                end
+                c.BackgroundColor3 = col
+            end
+        end
+
+        o.nm.Visible = es.name
+        if es.name then
+            o.nm.Text = pl.Name
+            o.nm.TextColor3 = col
+            o.nm.Position = UDim2.fromOffset(minX + w / 2, minY - 3)
+        end
+
+        local bones = ch:FindFirstChild("UpperTorso") and R15 or R6
+        for i, l in ipairs(o.sk) do
+            local b = es.skel and bones[i]
+            local pa = b and ch:FindFirstChild(b[1])
+            local pb = b and ch:FindFirstChild(b[2])
+            if pa and pb then
+                local va, vb = cam:WorldToViewportPoint(pa.Position), cam:WorldToViewportPoint(pb.Position)
+                if va.Z > 0 and vb.Z > 0 then
+                    setLine(l, Vector2.new(va.X, va.Y), Vector2.new(vb.X, vb.Y), 1.6, col)
+                else
+                    l.Visible = false
+                end
+            else
+                l.Visible = false
+            end
+        end
+    end
+
+    local conn
+    conn = RunService.RenderStepped:Connect(function()
+        local any = es.box or es.box3d or es.fill or es.corners or es.name or es.skel
+        if not any then
+            if es.gui then
+                for _, o in pairs(es.objs) do hide(o) end
+            end
+            return
+        end
+        local cam = workspace.CurrentCamera
+        if not cam then return end
+        ensureGui()
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if pl ~= LocalPlayer then
+                local o = es.objs[pl]
+                if not o then
+                    o = make(pl)
+                    es.objs[pl] = o
+                end
+                pcall(update, pl, o, cam)
+            end
+        end
+    end)
+    Players.PlayerRemoving:Connect(function(pl)
+        local o = es.objs[pl]
+        if o then destroyObj(o) es.objs[pl] = nil end
+    end)
+    X.espClear = function()
+        es.box, es.box3d, es.fill, es.corners, es.name, es.skel = false, false, false, false, false, false
+        for _, o in pairs(es.objs) do destroyObj(o) end
+        es.objs = {}
+        if es.gui then pcall(function() es.gui:Destroy() end) es.gui = nil end
+        if es.f3 then pcall(function() es.f3:Destroy() end) es.f3 = nil end
+    end
+end)
+
 -- ===== Trails =====
 safe("Trails", function()
-    local tr = {on = false, life = 1, sync = true, rainbow = false, obj = nil, root = nil}
+    local tr = {on = false, life = 1, sync = true, rainbow = false, obj = nil, root = nil, a0 = nil, a1 = nil}
     local tab = addTab("Trails", ICONS.EYE)
     tab.Section("🌈 Trails")
+    local function trClear()
+        for _, o in ipairs({tr.obj, tr.a0, tr.a1}) do
+            if o then pcall(function() o:Destroy() end) end
+        end
+        tr.obj, tr.a0, tr.a1, tr.root = nil, nil, nil, nil
+        local ch = myChar()
+        if ch then -- убираем остатки от прошлых запусков
+            for _, d in ipairs(ch:GetDescendants()) do
+                if d.Name == "MWTrail" or d.Name == "MWTrailA0" or d.Name == "MWTrailA1" then pcall(function() d:Destroy() end) end
+            end
+        end
+    end
     tab.Toggle("Trails", false, function(v)
         tr.on = v
-        if not v and tr.obj then
-            tr.obj:Destroy()
-            tr.obj = nil
-        end
+        if not v then trClear() end
     end, ICONS.EYE)
     tab.Slider("Trails: Длина", 0.2, 3, 1, "", function(v) tr.life = v end, 0.1)
     tab.Toggle("Trails: синхронизация с темой", true, function(v) tr.sync = v end, ICONS.EYE)
@@ -12802,23 +14101,33 @@ safe("Trails", function()
                 pcall(function()
                     local hrp = myHrp()
                     if not hrp then return end
-                    if not tr.obj or tr.root ~= hrp or not tr.obj.Parent then
-                        if tr.obj then tr.obj:Destroy() end
+                    if not tr.obj or tr.root ~= hrp or not tr.obj.Parent or not tr.a0 or not tr.a0.Parent then
+                        trClear()
                         local a0 = Instance.new("Attachment")
-                        a0.Position = Vector3.new(0, 0.9, 0)
                         a0.Name = "MWTrailA0"
+                        a0.Position = Vector3.new(0, 1.2, 0)
                         a0.Parent = hrp
                         local a1 = Instance.new("Attachment")
-                        a1.Position = Vector3.new(0, -0.9, 0)
                         a1.Name = "MWTrailA1"
+                        a1.Position = Vector3.new(0, -1.2, 0)
                         a1.Parent = hrp
                         local t = Instance.new("Trail")
                         t.Name = "MWTrail"
                         t.Attachment0, t.Attachment1 = a0, a1
+                        t.Enabled = true
+                        t.FaceCamera = true -- без этого лента стоит ребром к камере сзади и её почти не видно
+                        t.MinLength = 0.05
+                        t.MaxLength = 0
                         t.LightEmission = 1
-                        t.Transparency = NumberSequence.new(0.1, 1)
+                        t.LightInfluence = 0
+                        pcall(function() t.Brightness = 2 end)
+                        t.Texture = ""
+                        t.TextureMode = Enum.TextureMode.Stretch
+                        t.Transparency = NumberSequence.new({NumberSequenceKeypoint.new(0, 0.05), NumberSequenceKeypoint.new(1, 1)})
+                        t.WidthScale = NumberSequence.new({NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 0.15)})
+                        t.Lifetime = tr.life
                         t.Parent = hrp
-                        tr.obj, tr.root = t, hrp
+                        tr.obj, tr.root, tr.a0, tr.a1 = t, hrp, a0, a1
                     end
                     tr.obj.Lifetime = tr.life
                     if tr.rainbow then
@@ -13984,13 +15293,91 @@ t9.Button("🌐 Открыть Local Config Manager", openLocalLibrary)
 --------------------------------------------------
 -- ПЛАВАЮЩАЯ КНОПКА
 --------------------------------------------------
+--------------------------------------------------
+-- БЫСТРОЕ ОТКРЫТИЕ/ЗАКРЫТИЕ МЕНЮ
+-- Раньше каждый элемент окна (сотни штук) плавно анимировался отдельным Tween'ом на каждое открытие и закрытие,
+-- из-за чего на телефоне меню открывалось с лагом. Теперь на время переключения состояние ставится сразу,
+-- окно показывается одной лёгкой анимацией (UIScale), а закрытое меню полностью отключается от отрисовки.
+--------------------------------------------------
+do
+    local fast = {bulk = false, tok = 0, frame = nil, scale = nil, last = 0}
+    local dummy = {
+        Play = function() end, Pause = function() end, Cancel = function() end, Destroy = function() end,
+        Completed = {Connect = function() return {Disconnect = function() end} end, Wait = function() end, Once = function() return {Disconnect = function() end} end},
+    }
+
+    local origPlay = NeverLose.PlayAnimate
+    NeverLose.PlayAnimate = function(self, info, props)
+        if fast.bulk then
+            for k, v in pairs(props) do
+                pcall(function() self[k] = v end)
+            end
+            return dummy
+        end
+        return origPlay(self, info, props)
+    end
+
+    local function winFrame()
+        if fast.frame and fast.frame.Parent then return fast.frame end
+        local best, ba
+        for _, c in ipairs(NeverLose.ScreenGui:GetChildren()) do
+            if c:IsA("Frame") and c.ClipsDescendants and c.AnchorPoint == Vector2.new(0.5, 0.5) then
+                local a = c.Size.X.Offset * c.Size.Y.Offset
+                if not ba or a > ba then best, ba = c, a end
+            end
+        end
+        fast.frame = best
+        fast.scale = nil
+        if best then
+            local sc = best:FindFirstChild("MWOpenScale") or Instance.new("UIScale")
+            sc.Name = "MWOpenScale"
+            sc.Scale = 1
+            sc.Parent = best
+            fast.scale = sc
+        end
+        return best
+    end
+
+    X.fastMenu = function(show)
+        local gui = NeverLose.ScreenGui
+        fast.tok = fast.tok + 1
+        local tok = fast.tok
+        fast.bulk = true
+        if show then
+            pcall(function() gui.Enabled = true end)
+        end
+        local ok = pcall(function() NLWin.Signal:SetValue(show) end)
+        if not ok then fast.bulk = false return end
+        if show then
+            -- одна дешёвая анимация вместо сотен
+            pcall(function()
+                if winFrame() and fast.scale then
+                    fast.scale.Scale = 0.93
+                    TweenService:Create(fast.scale, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Scale = 1}):Play()
+                end
+            end)
+        else
+            -- закрыто: интерфейс библиотеки больше не рисуется и не считает layout
+            pcall(function() gui.Enabled = false end)
+        end
+        -- сигналы Roblox доходят отложенно, поэтому «мгновенный режим» снимаем чуть позже
+        task.delay(0.15, function()
+            if fast.tok == tok then fast.bulk = false end
+        end)
+    end
+end
+
 local toggleGui = makeGui("ManewareToggle", 99999)
 local menuVisible = true
 
 local function setMenu(show)
     menuVisible = show and true or false
     if X.chatBtnShow then pcall(X.chatBtnShow, not menuVisible) end
-    pcall(function() NLWin.Signal:SetValue(menuVisible) end)
+    if X.fastMenu then
+        pcall(X.fastMenu, menuVisible)
+    else
+        pcall(function() NLWin.Signal:SetValue(menuVisible) end)
+    end
 end
 
 local fab = new("TextButton", {Size = UDim2.new(0, 42, 0, 42), Position = UDim2.new(1, -56, 0.5, -21),
